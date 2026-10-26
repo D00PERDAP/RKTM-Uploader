@@ -11,14 +11,14 @@ TRANSPORT=WinscpTransport(ROOT/'WinSCP'/'WinSCP.com')
 RED='#b42332'; BG='#f6f7f9'
 class Base(tk.Tk):
  def __init__(self,title):
-  super().__init__();self.title(title);self.geometry('740x620');self.minsize(640,470);self.configure(bg=BG)
+  super().__init__();self.title(title);self.geometry('840x660');self.minsize(700,520);self.configure(bg=BG)
   self.q=queue.Queue();self.busy=False
   try:self.iconbitmap(str(ROOT/'assets'/('admin.ico' if 'Администратор' in title else 'upload.ico')))
   except (OSError,tk.TclError):pass
   self.protocol('WM_DELETE_WINDOW',self.destroy)
   self.after(100,self.poll)
   self.main=ttk.Frame(self,padding=20);self.main.pack(fill='both',expand=True)
-  style=ttk.Style();style.theme_use('clam');style.configure('TButton',font=('Segoe UI',11),padding=10);style.configure('TLabel',font=('Segoe UI',10));style.configure('TEntry',font=('Segoe UI',11));style.configure('Heading.TLabel',font=('Segoe UI',17,'bold'))
+  style=ttk.Style();style.theme_use('clam');style.configure('TFrame',background='#f6f7f9');style.configure('TLabel',background='#f6f7f9',foreground='#202633',font=('Segoe UI',10));style.configure('TButton',font=('Segoe UI',11),padding=(13,11));style.map('TButton',background=[('active','#e8e9ed')]);style.configure('TEntry',font=('Segoe UI',11),padding=6);style.configure('Heading.TLabel',font=('Segoe UI',20,'bold'),foreground='#a71f30');style.configure('Primary.TButton',font=('Segoe UI',12,'bold'),padding=(14,15),foreground='white',background='#b42332');style.map('Primary.TButton',background=[('active','#931d29'),('disabled','#aab0b6')]);style.configure('Horizontal.TProgressbar',background='#b42332',troughcolor='#e3e5e9',thickness=14)
   self.status=tk.StringVar(value='Готово')
   ttk.Label(self,textvariable=self.status,background=BG,wraplength=650).pack(fill='x',padx=20,pady=8)
  def launch(self,job,done):
@@ -83,31 +83,32 @@ class Admin(Base):
 class Upload(Base):
  def __init__(self):
   super().__init__('РКТМ — Загрузка расписания')
-  ttk.Label(self.main,text='Обновление расписания',style='Heading.TLabel').pack(anchor='w',pady=10)
+  ttk.Label(self.main,text='Загрузка расписания',style='Heading.TLabel').pack(anchor='w',pady=(6,3))
+  ttk.Label(self.main,text='Выберите готовые HTML, папку или ZIP. Остальное сделает программа.').pack(anchor='w',pady=(0,12))
   try:self.cfg=settings.load()
   except Exception as e:self.cfg=None;self.status.set(str(e))
-  ttk.Label(self.main,text='Папка на сайте: '+(self.cfg.get('folder','—') if self.cfg else 'не настроена')).pack(anchor='w',pady=8)
+  ttk.Label(self.main,text='Куда будет загружено: '+(self.cfg.get('folder','—') if self.cfg else 'не настроено'),wraplength=700).pack(anchor='w',pady=(0,12))
   self.entries=[];self.temps=[]
   bar=ttk.Frame(self.main);bar.pack(fill='x',pady=6)
-  ttk.Button(bar,text='Выбрать HTML',command=self.pick).pack(side='left',expand=True,fill='x',padx=3)
-  ttk.Button(bar,text='Добавить папку',command=self.add_folder).pack(side='left',expand=True,fill='x',padx=3)
-  ttk.Button(bar,text='Добавить ZIP',command=self.add_zip).pack(side='left',expand=True,fill='x',padx=3)
-  self.count=tk.StringVar(value='Выбрано файлов: 0')
+  ttk.Button(bar,text='1. Выбрать файлы',command=self.pick).pack(side='left',expand=True,fill='x',padx=3)
+  ttk.Button(bar,text='Выбрать папку',command=self.add_folder).pack(side='left',expand=True,fill='x',padx=3)
+  ttk.Button(bar,text='Открыть ZIP',command=self.add_zip).pack(side='left',expand=True,fill='x',padx=3)
+  self.count=tk.StringVar(value='Файлы для публикации: 0')
   ttk.Label(self.main,textvariable=self.count).pack(anchor='w',pady=6)
-  self.items=tk.Listbox(self.main,font=('Segoe UI',10))
+  self.items=tk.Listbox(self.main,font=('Segoe UI',11),borderwidth=1,relief='solid',highlightthickness=0,selectbackground='#b42332',selectforeground='white')
   self.items.pack(fill='both',expand=True,pady=6)
   self.progress=ttk.Progressbar(self.main,mode='determinate',maximum=1)
   self.progress.pack(fill='x',pady=6)
-  self.current=tk.StringVar(value='Ожидание выбора файлов')
+  self.current=tk.StringVar(value='Готово к выбору файлов')
   ttk.Label(self.main,textvariable=self.current,wraplength=650).pack(anchor='w',pady=5)
-  self.send_button=ttk.Button(self.main,text='Опубликовать на сайте',command=self.publish)
+  self.send_button=ttk.Button(self.main,text='2. ОБНОВИТЬ РАСПИСАНИЕ НА САЙТЕ',style='Primary.TButton',command=self.publish)
   self.send_button.pack(fill='x',pady=8)
   self.progress_q=queue.Queue()
   self.after(100,self.progress_poll)
  def refresh(self):
   self.items.delete(0,'end')
   for local,rel in self.entries:self.items.insert('end',rel)
-  self.count.set(f'Выбрано файлов: {len(self.entries)}')
+  self.count.set(f'Файлы для публикации: {len(self.entries)}')
  def append(self,new):
   known={rel.casefold() for _,rel in self.entries}
   for local,rel in new:
