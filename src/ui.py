@@ -165,13 +165,15 @@ class Upload(Base):
   self.progress['maximum']=len(entries)
   self.send_button.state(['disabled'])
   def job():
-   results=[]
+   results=[];folder_cache={}
    for i,(local,rel) in enumerate(entries,1):
     self.progress_q.put(('current',(i,len(entries),rel)))
     try:
      sections=rel.split('/')[:-1]
-     folder=TRANSPORT.ensure_subfolders(c,c['folder'],sections)
-     result=TRANSPORT.publish(c,local,folder)
+     key=tuple(sections)
+     if key not in folder_cache:
+      folder_cache[key]=TRANSPORT.ensure_subfolders(c,c['folder'],sections)
+     result=TRANSPORT.publish(c,local,folder_cache[key])
     except Exception as e:
      result={'error':str(e)}
     results.append(((local,rel),result))
