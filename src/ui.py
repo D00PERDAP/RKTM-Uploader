@@ -107,11 +107,16 @@ class Upload(Base):
   def job():
    results=[]
    for p in paths:
-    try:results.append((Path(p).name,TRANSPORT.publish(c,p,c['folder'])))
-    except Exception as e:results.append((Path(p).name,{'error':str(e)}))
+    try:results.append((p,TRANSPORT.publish(c,p,c['folder'])))
+    except Exception as e:results.append((p,{'error':str(e)}))
    return results
   def done(results):
-   lines=[f'{n}: '+('опубликован' if r.get('status')=='published' else 'ОШИБКА — '+r.get('error','')) for n,r in results]
+   succeeded={p for p,r in results if r.get('status')=='published'}
+   self.paths=[p for p in self.paths if p not in succeeded]
+   self.items.delete(0,'end')
+   for p in self.paths:self.items.insert('end',Path(p).name)
+   lines=[f'{Path(p).name}: '+('опубликован' if r.get('status')=='published' else 'ОШИБКА — '+r.get('error','')) for p,r in results]
+   self.status.set(f'Успешно: {len(succeeded)}. Осталось в списке: {len(self.paths)}')
    messagebox.showinfo('Результат публикации','\n'.join(lines)[:3000])
   self.launch(job,done)
 
