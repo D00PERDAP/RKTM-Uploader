@@ -1,4 +1,4 @@
-#define AppVersion "4.1.0"
+#define AppVersion "4.2.0"
 [Setup]
 AppId={{89DA7779-6E8E-44F1-9E8C-BB23FF136208}
 AppName=РКТМ — Расписание
@@ -10,6 +10,11 @@ OutputBaseFilename=RKTM-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+CloseApplications=yes
+RestartApplications=no
+UsePreviousAppDir=yes
+UsePreviousGroup=yes
+Uninstallable=yes
 SetupIconFile=assets\upload.ico
 PrivilegesRequired=admin
 ArchitecturesAllowed=x86 x64
