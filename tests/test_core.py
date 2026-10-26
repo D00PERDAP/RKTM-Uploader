@@ -19,6 +19,8 @@ def test_open_command():
  v=command_open(CFG)
  assert 'test:P%40ss%20word%25@' in v and '-hostkey=' in v
  assert 'P@ss word%' not in v
+ assert '-hostkey="ssh-ed25519 256 ofL9honxhZ4RaZXLKG8oTUj6zGfWeA7EMsFsPvB4La8"' in v
+ assert 'SHA256:' not in v
 
 def test_missing_host():
  with pytest.raises(UploadError):validate_connection(dict(CFG,host=''))
