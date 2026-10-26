@@ -50,7 +50,7 @@ def command_open(c):
     h,u,port=validate_connection(c)
     # WinSCP scripting commands are delivered via stdin, never process arguments.
     pwd=quote(c['password'],safe='')
-    return 'open "sftp://%s:%s@%s:%d/" -hostkey="%s" -timeout=12' % (quote(u,safe=''), pwd,h,port,validate_hostkey(c['hostkey']))
+    return 'open "sftp://%s:%s@%s:%d/" -hostkey="%s" -timeout=12' % (quote(u,safe=''), pwd,h,port,validate_hostkey(c['hostkey']).replace(' SHA256:', ' '))
 
 
 def quote_remote(path):
