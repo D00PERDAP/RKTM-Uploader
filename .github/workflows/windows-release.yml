@@ -1,0 +1,43 @@
+name: Windows offline release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: windows-2022
+    strategy:
+      matrix:
+        arch: [x86, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: ${{ matrix.arch }}
+      - name: Install build tooling
+        run: python -m pip install "pyinstaller==6.11.1" "pytest==8.3.4"
+      - name: Test and build
+        shell: pwsh
+        run: ./build-windows.ps1
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Create installer
+        shell: pwsh
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+      - name: Create portable package
+        shell: pwsh
+        run: Compress-Archive -Path dist/RKTM-Admin,dist/RKTM-Uploader -DestinationPath "RKTM-Portable-${{ matrix.arch }}.zip"
+      - name: Compute hashes
+        shell: pwsh
+        run: |
+          Get-FileHash release/RKTM-Setup.exe -Algorithm SHA256 | Format-List | Out-File "SHA256-${{ matrix.arch }}.txt"
+          Get-FileHash "RKTM-Portable-${{ matrix.arch }}.zip" -Algorithm SHA256 | Format-List | Out-File "SHA256-${{ matrix.arch }}.txt" -Append
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RKTM-windows-${{ matrix.arch }}
+          path: |
+            release/RKTM-Setup.exe
+            RKTM-Portable-${{ matrix.arch }}.zip
+            SHA256-${{ matrix.arch }}.txt
