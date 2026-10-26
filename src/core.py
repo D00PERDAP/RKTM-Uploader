@@ -89,6 +89,21 @@ class WinscpTransport:
             name=line.split()[-1].strip()
             if name not in ('.','..') and '/' not in name and name: dirs.append(name)
         return sorted(set(dirs),key=str.casefold)
+    def ensure_subfolders(self,c,base,parts):
+        """Create only selected relative subfolders under the locked publishing root."""
+        base=validate_folder(base)
+        current=base
+        for part in parts:
+            if part not in ('HTML','HTML_PREPS','HTML_AUDS'):
+                raise UploadError('Неизвестный раздел расписания: '+part)
+            current=current.rstrip('/')+'/'+part
+            # WinSCP mkdir returns an error when directory exists, so test first.
+            parent=current.rsplit('/',1)[0] or '/'
+            known=self.list_dir(c,parent)
+            if part not in known:
+                self.execute(c,['mkdir '+quote_remote(current)],timeout=30)
+        return current
+
     def publish(self,c,local_path,folder):
         folder=validate_folder(folder)
         path=Path(local_path); name=validate_name(path.name)
