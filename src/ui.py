@@ -3,6 +3,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk,filedialog,messagebox
 from core import WinscpTransport,UploadError,validate_folder,validate_connection,validate_name
+from selection import collect_folder,collect_zip,destination
 import settings
 
 ROOT=(Path(getattr(sys,'_MEIPASS')) if getattr(sys,'frozen',False) else Path(__file__).resolve().parent.parent)
@@ -85,39 +86,109 @@ class Upload(Base):
   ttk.Label(self.main,text='Обновление расписания',style='Heading.TLabel').pack(anchor='w',pady=10)
   try:self.cfg=settings.load()
   except Exception as e:self.cfg=None;self.status.set(str(e))
-  ttk.Label(self.main,text='Папка на сайте: '+(self.cfg.get('folder','—') if self.cfg else 'не настроена')).pack(anchor='w',pady=10)
-  self.paths=[]
-  ttk.Button(self.main,text='Выбрать HTML-файлы',command=self.pick).pack(fill='x',pady=6)
-  self.items=tk.Listbox(self.main,font=('Segoe UI',11));self.items.pack(fill='both',expand=True,pady=10)
-  ttk.Button(self.main,text='Опубликовать на сайте',command=self.publish).pack(fill='x',pady=8)
+  ttk.Label(self.main,text='Папка на сайте: '+(self.cfg.get('folder','—') if self.cfg else 'не настроена')).pack(anchor='w',pady=8)
+  self.entries=[];self.temps=[]
+  bar=ttk.Frame(self.main);bar.pack(fill='x',pady=6)
+  ttk.Button(bar,text='Выбрать HTML',command=self.pick).pack(side='left',expand=True,fill='x',padx=3)
+  ttk.Button(bar,text='Добавить папку',command=self.add_folder).pack(side='left',expand=True,fill='x',padx=3)
+  ttk.Button(bar,text='Добавить ZIP',command=self.add_zip).pack(side='left',expand=True,fill='x',padx=3)
+  self.count=tk.StringVar(value='Выбрано файлов: 0')
+  ttk.Label(self.main,textvariable=self.count).pack(anchor='w',pady=6)
+  self.items=tk.Listbox(self.main,font=('Segoe UI',10))
+  self.items.pack(fill='both',expand=True,pady=6)
+  self.progress=ttk.Progressbar(self.main,mode='determinate',maximum=1)
+  self.progress.pack(fill='x',pady=6)
+  self.current=tk.StringVar(value='Ожидание выбора файлов')
+  ttk.Label(self.main,textvariable=self.current,wraplength=650).pack(anchor='w',pady=5)
+  self.send_button=ttk.Button(self.main,text='Опубликовать на сайте',command=self.publish)
+  self.send_button.pack(fill='x',pady=8)
+  self.progress_q=queue.Queue()
+  self.after(100,self.progress_poll)
+ def refresh(self):
+  self.items.delete(0,'end')
+  for local,rel in self.entries:self.items.insert('end',rel)
+  self.count.set(f'Выбрано файлов: {len(self.entries)}')
+ def append(self,new):
+  known={rel.casefold() for _,rel in self.entries}
+  for local,rel in new:
+   if rel.casefold() in known:
+    messagebox.showerror('Повтор имени','Повторяется файл назначения: '+rel)
+    return
+   known.add(rel.casefold())
+  self.entries.extend(new)
+  self.refresh()
  def pick(self):
-  paths=filedialog.askopenfilenames(title='Выбрать HTML-файлы',filetypes=[('HTML','*.html *.htm')])
-  self.paths=list(paths);self.items.delete(0,'end')
-  for p in self.paths:self.items.insert('end',Path(p).name)
- def publish(self):
-  if not self.cfg:messagebox.showerror('Не настроено','Обратитесь к администратору');return
-  if not self.paths:messagebox.showinfo('Нет файлов','Сначала выберите HTML-файлы');return
+  if self.busy:return
+  paths=filedialog.askopenfilenames(title='Выберите HTML-файлы',filetypes=[('HTML','*.html *.htm')])
+  self.append([(p,Path(p).name) for p in paths])
+ def add_folder(self):
+  if self.busy:return
+  folder=filedialog.askdirectory(title='Выберите папку с расписанием')
+  if not folder:return
+  try:self.append(collect_folder(folder))
+  except Exception as e:messagebox.showerror('Папка',str(e))
+ def add_zip(self):
+  if self.busy:return
+  filename=filedialog.askopenfilename(title='Выберите ZIP с HTML',filetypes=[('ZIP','*.zip')])
+  if not filename:return
   try:
-   for p in self.paths:validate_name(Path(p).name)
-   names=[Path(p).name.lower() for p in self.paths]
-   if len(names)!=len(set(names)):raise UploadError('Есть файлы с одинаковым именем')
+   temp,files=collect_zip(filename)
+   self.temps.append(temp)
+   self.append(files)
+  except Exception as e:messagebox.showerror('ZIP',str(e))
+ def progress_poll(self):
+  try:
+   while True:
+    kind,value=self.progress_q.get_nowait()
+    if kind=='current':
+     index,total,name=value
+     self.progress['maximum']=total
+     self.progress['value']=index-1
+     self.current.set(f'Файл {index} из {total}: {name}')
+    elif kind=='completed':
+     self.progress['value']=value
+  except queue.Empty:pass
+  self.after(100,self.progress_poll)
+ def publish(self):
+  if self.busy:return
+  if not self.cfg:messagebox.showerror('Не настроено','Обратитесь к администратору');return
+  if not self.entries:messagebox.showinfo('Нет файлов','Сначала добавьте HTML-файлы');return
+  try:
+   validate_folder(self.cfg['folder'])
+   for p,rel in self.entries:
+    validate_name(Path(rel).name)
+    if not Path(p).is_file():raise UploadError('Файл не найден: '+rel)
   except Exception as e:messagebox.showerror('Проверка',str(e));return
-  if not messagebox.askyesno('Подтверждение',f'Заменить {len(self.paths)} файлов на сайте в папке {self.cfg["folder"]}?'):return
-  paths=list(self.paths);c=self.cfg.copy()
+  if not messagebox.askyesno('Подтверждение',f'Опубликовать {len(self.entries)} HTML-файлов? Вложенные HTML, HTML_PREPS, HTML_AUDS будут направлены в соответствующие каталоги.'):return
+  entries=list(self.entries);c=self.cfg.copy();self.progress_q=queue.Queue()
+  self.progress['value']=0
+  self.progress['maximum']=len(entries)
+  self.send_button.state(['disabled'])
   def job():
    results=[]
-   for p in paths:
-    try:results.append((p,TRANSPORT.publish(c,p,c['folder'])))
-    except Exception as e:results.append((p,{'error':str(e)}))
+   for i,(local,rel) in enumerate(entries,1):
+    self.progress_q.put(('current',(i,len(entries),rel)))
+    try:
+     sections=rel.split('/')[:-1]
+     folder=TRANSPORT.ensure_subfolders(c,c['folder'],sections)
+     result=TRANSPORT.publish(c,local,folder)
+    except Exception as e:
+     result={'error':str(e)}
+    results.append(((local,rel),result))
+    self.progress_q.put(('completed',i))
    return results
   def done(results):
-   succeeded={p for p,r in results if r.get('status')=='published'}
-   self.paths=[p for p in self.paths if p not in succeeded]
-   self.items.delete(0,'end')
-   for p in self.paths:self.items.insert('end',Path(p).name)
-   lines=[f'{Path(p).name}: '+('опубликован' if r.get('status')=='published' else 'ОШИБКА — '+r.get('error','')) for p,r in results]
-   self.status.set(f'Успешно: {len(succeeded)}. Осталось в списке: {len(self.paths)}')
-   messagebox.showinfo('Результат публикации','\n'.join(lines)[:3000])
+   self.send_button.state(['!disabled'])
+   succeeded={rel for (_,rel),r in results if r.get('status')=='published'}
+   self.entries=[e for e in self.entries if e[1] not in succeeded]
+   self.refresh()
+   ok=len(succeeded);failed=len(results)-ok
+   self.current.set(f'Готово. Успешно: {ok}, ошибок: {failed}')
+   self.status.set(f'Опубликовано: {ok}. Осталось в списке: {len(self.entries)}')
+   errors=[f'{rel}: {r.get("error")}' for (_,rel),r in results if r.get('status')!='published']
+   if errors:
+    messagebox.showwarning('Итог публикации',f'Успешно: {ok}; ошибок: {failed}.\n'+'\n'.join(errors)[:1800])
+   else:messagebox.showinfo('Готово',f'Все {ok} HTML-файлов опубликованы.')
   self.launch(job,done)
 
 if __name__=='__main__':
