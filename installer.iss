@@ -1,7 +1,11 @@
-#define AppVersion "4.4.0"
+#define AppVersion "4.5.0"
 [Setup]
 AppId={{89DA7779-6E8E-44F1-9E8C-BB23FF136208}
 AppName=РКТМ — Расписание
+AppPublisher=Сорокин Дмитрий Денисович
+VersionInfoCompany=Сорокин Дмитрий Денисович
+VersionInfoDescription=РКТМ — загрузчик расписаний
+VersionInfoVersion=4.5.0
 AppVersion={#AppVersion}
 DefaultDirName={autopf}\RKTM Schedule
 DefaultGroupName=РКТМ — Расписание
@@ -30,4 +34,4 @@ Name: "{autodesktop}\РКТМ — Расписание"; Filename: "{app}\Upload
 Name: "{group}\РКТМ — Администратор"; Filename: "{app}\Admin\RKTM-Admin.exe"
 Name: "{group}\РКТМ — Расписание"; Filename: "{app}\Uploader\RKTM-Uploader.exe"
 [Run]
-Filename: "{app}\Admin\RKTM-Admin.exe"; Description: "Настроить подключение РКТМ"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\Uploader\RKTM-Uploader.exe"; Description: "Открыть загрузчик РКТМ"; Flags: postinstall nowait skipifsilent
