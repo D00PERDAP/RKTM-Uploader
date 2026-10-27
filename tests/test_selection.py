@@ -5,16 +5,16 @@ import pytest
 from selection import destination,collect_folder,collect_zip
 
 def test_routes():
- assert destination('HTML/1.html')=='HTML/1.html'
- assert destination('Для сайта/HTML_PREPS/m1.htm')=='HTML_PREPS/m1.htm'
- assert destination('HTML_AUDS/a.html')=='HTML_AUDS/a.html'
+ assert destination('HTML/1.html')=='1.html'
+ assert destination('Для сайта/HTML_PREPS/m1.htm')=='m1.htm'
+ assert destination('HTML_AUDS/a.html')=='a.html'
  assert destination('readme.txt') is None
 
 def test_folder(tmp_path):
  p=tmp_path/'HTML';p.mkdir()
  (p/'1.html').write_text('<html>1</html>')
  (p/'x.txt').write_text('ignore')
- assert [x[1] for x in collect_folder(p)]==['HTML/1.html']
+ assert [x[1] for x in collect_folder(p)]==['1.html']
 
 def test_zip_html_only(tmp_path):
  p=tmp_path/'test.zip'
@@ -24,7 +24,7 @@ def test_zip_html_only(tmp_path):
   z.writestr('extra.txt',b'ignored')
  temp,items=collect_zip(p)
  try:
-  assert [rel for _,rel in items]==['HTML/1.html','HTML_PREPS/m1.html']
+  assert [rel for _,rel in items]==['1.html','m1.html']
   assert all(Path(local).is_file() for local,_ in items)
  finally:temp.cleanup()
 
