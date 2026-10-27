@@ -1,4 +1,5 @@
 import os,sys,queue,threading,traceback
+from concurrent.futures import ThreadPoolExecutor,as_completed
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk,filedialog,messagebox
@@ -84,7 +85,7 @@ class Upload(Base):
  def __init__(self):
   super().__init__('РКТМ — Загрузка расписания')
   ttk.Label(self.main,text='Загрузка расписания',style='Heading.TLabel').pack(anchor='w',pady=(6,3))
-  ttk.Label(self.main,text='Выберите готовые HTML, папку или ZIP. Остальное сделает программа.').pack(anchor='w',pady=(0,12))
+  ttk.Label(self.main,text='Три шага: выбрать → проверить → опубликовать. Папки из ZIP на сервер не переносятся.').pack(anchor='w',pady=(0,12))
   try:self.cfg=settings.load()
   except Exception as e:self.cfg=None;self.status.set(str(e))
   ttk.Label(self.main,text='Куда будет загружено: '+(self.cfg.get('folder','—') if self.cfg else 'не настроено'),wraplength=700).pack(anchor='w',pady=(0,12))
@@ -95,7 +96,7 @@ class Upload(Base):
   ttk.Button(bar,text='1. Выбрать файлы',command=self.pick).pack(side='left',expand=True,fill='x',padx=3)
   ttk.Button(bar,text='Выбрать папку',command=self.add_folder).pack(side='left',expand=True,fill='x',padx=3)
   ttk.Button(bar,text='Открыть ZIP',command=self.add_zip).pack(side='left',expand=True,fill='x',padx=3)
-  self.count=tk.StringVar(value='Файлы для публикации: 0')
+  self.count=tk.StringVar(value='HTML-файлов для публикации: 0')
   self.count_label=ttk.Label(self.main,textvariable=self.count)
   self.count_label.pack(anchor='w',pady=6)
   self.items=tk.Listbox(self.main,font=('Segoe UI',11),borderwidth=1,relief='solid',highlightthickness=0,selectbackground='#b42332',selectforeground='white')
@@ -129,7 +130,7 @@ class Upload(Base):
    self.back_button.state(['!disabled'])
    self.send_button.configure(text='ОПУБЛИКОВАТЬ НА САЙТЕ',command=self.publish)
    self.send_button.state(['!disabled'])
-   self.current.set('Проверьте список и папку назначения. Будут загружены только HTML-файлы.')
+   self.current.set('Только HTML и HTM. Все файлы попадут прямо в выбранный каталог, без подпапок.')
   else:
    self.selection_bar.pack_forget()
    self.back_button.state(['disabled'])
@@ -148,7 +149,7 @@ class Upload(Base):
  def refresh(self):
   self.items.delete(0,'end')
   for local,rel in self.entries:self.items.insert('end',rel)
-  self.count.set(f'Файлы для публикации: {len(self.entries)}')
+  self.count.set(f'HTML-файлов для публикации: {len(self.entries)}')
  def append(self,new):
   known={rel.casefold() for _,rel in self.entries}
   for local,rel in new:
@@ -185,7 +186,7 @@ class Upload(Base):
      index,total,name=value
      self.progress['maximum']=total
      self.progress['value']=index-1
-     self.current.set(f'Файл {index} из {total}: {name}')
+     self.current.set(f'Готово {index} из {total} · Последний файл: {name}')
     elif kind=='completed':
      self.progress['value']=value
   except queue.Empty:pass
@@ -200,25 +201,28 @@ class Upload(Base):
     validate_name(Path(rel).name)
     if not Path(p).is_file():raise UploadError('Файл не найден: '+rel)
   except Exception as e:messagebox.showerror('Проверка',str(e));return
-  if not messagebox.askyesno('Подтверждение',f'Начать публикацию {len(self.entries)} HTML-файлов в {self.cfg["folder"]}?'):return
+  if not messagebox.askyesno('Подтверждение',f'Опубликовать {len(self.entries)} HTML-файлов непосредственно в {self.cfg["folder"]}, без подпапок?'):return
   self.show_stage(3)
   entries=list(self.entries);c=self.cfg.copy();self.progress_q=queue.Queue()
   self.progress['value']=0
   self.progress['maximum']=len(entries)
   def job():
-   results=[];folder_cache={}
-   for i,(local,rel) in enumerate(entries,1):
-    self.progress_q.put(('current',(i,len(entries),rel)))
-    try:
-     sections=rel.split('/')[:-1]
-     key=tuple(sections)
-     if key not in folder_cache:
-      folder_cache[key]=TRANSPORT.ensure_subfolders(c,c['folder'],sections)
-     result=TRANSPORT.publish(c,local,folder_cache[key])
-    except Exception as e:
-     result={'error':str(e)}
-    results.append(((local,rel),result))
-    self.progress_q.put(('completed',i))
+   # A few parallel SFTP connections accelerate many small HTML files.
+   # Every file retains the transport's staged upload and backup behaviour.
+   results=[]
+   def send(entry):
+    local,rel=entry
+    try:return entry,TRANSPORT.publish(c,local,c['folder'])
+    except Exception as e:return entry,{'error':str(e)}
+   with ThreadPoolExecutor(max_workers=3) as pool:
+    futures={pool.submit(send,e):e for e in entries}
+    completed=0
+    for future in as_completed(futures):
+     entry,result=future.result()
+     completed+=1
+     results.append((entry,result))
+     self.progress_q.put(('current',(completed,len(entries),entry[1])))
+     self.progress_q.put(('completed',completed))
    return results
   def done(results):
    succeeded={rel for (_,rel),r in results if r.get('status')=='published'}
