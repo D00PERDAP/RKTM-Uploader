@@ -9,20 +9,16 @@ MAX_SINGLE=20*1024*1024
 MAX_TOTAL=150*1024*1024
 
 def destination(name):
-    pieces=[p for p in name.replace('\\','/').split('/') if p]
-    if not pieces or any(p in ('.','..') for p in pieces):
-        raise ValueError('Некорректный путь в архиве')
-    if not pieces[-1].lower().endswith(('.html','.htm')):
+    # Archive directories are search locations, never remote destinations.
+    pieces=name.replace('\\\\','/').split('/')
+    if any(p in ('.','..') for p in pieces):
+        raise ValueError('Опасный путь внутри архива')
+    basename=pieces[-1]
+    if not basename.lower().endswith(('.html','.htm')):
         return None
-    if len(pieces[-1])>180 or any(ord(x)<32 for x in pieces[-1]):
-        raise ValueError('Недопустимое имя файла')
-    sections=[p for p in pieces[:-1] if p in SECTIONS]
-    if sections:
-        return sections[-1]+'/'+pieces[-1]
-    if len(pieces)==1:
-        return pieces[-1]
-    # Unknown folder layouts cannot be mapped safely: reject instead of guessing.
-    return None
+    if len(basename)>180 or any(ord(x)<32 for x in basename):
+        raise ValueError('Недопустимое имя HTML')
+    return basename
 
 def collect_folder(folder):
     base=Path(folder)
@@ -31,7 +27,6 @@ def collect_folder(folder):
     for p in sorted(base.rglob('*')):
         if not p.is_file() or p.is_symlink():continue
         rel=p.relative_to(base).as_posix()
-        if base.name in SECTIONS:rel=base.name+'/'+rel
         target=destination(rel)
         if target:
             if p.stat().st_size>MAX_SINGLE:raise ValueError('HTML слишком большой')
@@ -54,7 +49,8 @@ def collect_zip(archive):
                 if total>MAX_TOTAL or len(result)>=MAX_FILES:
                     raise ValueError('Превышен лимит файлов архива')
                 # Do not use original archive path as an extraction destination.
-                output=Path(temp.name)/('f'+str(len(result))+'.html')
+                output=Path(temp.name)/('f'+str(len(result))) / target
+                output.parent.mkdir(parents=True,exist_ok=True)
                 with z.open(info) as src,output.open('wb') as dst:
                     copied=0
                     while True:
