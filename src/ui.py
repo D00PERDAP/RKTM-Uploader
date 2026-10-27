@@ -89,22 +89,62 @@ class Upload(Base):
   except Exception as e:self.cfg=None;self.status.set(str(e))
   ttk.Label(self.main,text='Куда будет загружено: '+(self.cfg.get('folder','—') if self.cfg else 'не настроено'),wraplength=700).pack(anchor='w',pady=(0,12))
   self.entries=[];self.temps=[]
+  self.stage=tk.StringVar(value='ШАГ 1 ИЗ 3  ·  ВЫБОР ФАЙЛОВ')
+  ttk.Label(self.main,textvariable=self.stage,font=('Segoe UI',11,'bold'),foreground='#a71f30').pack(anchor='w',pady=(0,5))
   bar=ttk.Frame(self.main);bar.pack(fill='x',pady=6)
   ttk.Button(bar,text='1. Выбрать файлы',command=self.pick).pack(side='left',expand=True,fill='x',padx=3)
   ttk.Button(bar,text='Выбрать папку',command=self.add_folder).pack(side='left',expand=True,fill='x',padx=3)
   ttk.Button(bar,text='Открыть ZIP',command=self.add_zip).pack(side='left',expand=True,fill='x',padx=3)
   self.count=tk.StringVar(value='Файлы для публикации: 0')
-  ttk.Label(self.main,textvariable=self.count).pack(anchor='w',pady=6)
+  self.count_label=ttk.Label(self.main,textvariable=self.count)
+  self.count_label.pack(anchor='w',pady=6)
   self.items=tk.Listbox(self.main,font=('Segoe UI',11),borderwidth=1,relief='solid',highlightthickness=0,selectbackground='#b42332',selectforeground='white')
   self.items.pack(fill='both',expand=True,pady=6)
   self.progress=ttk.Progressbar(self.main,mode='determinate',maximum=1)
   self.progress.pack(fill='x',pady=6)
   self.current=tk.StringVar(value='Готово к выбору файлов')
   ttk.Label(self.main,textvariable=self.current,wraplength=650).pack(anchor='w',pady=5)
-  self.send_button=ttk.Button(self.main,text='2. ОБНОВИТЬ РАСПИСАНИЕ НА САЙТЕ',style='Primary.TButton',command=self.publish)
-  self.send_button.pack(fill='x',pady=8)
+  nav=ttk.Frame(self.main);nav.pack(fill='x',pady=8)
+  self.back_button=ttk.Button(nav,text='← Назад',command=self.go_back)
+  self.back_button.pack(side='left',padx=(0,8))
+  self.send_button=ttk.Button(nav,text='ДАЛЕЕ: ПРОВЕРИТЬ ФАЙЛЫ →',style='Primary.TButton',command=self.review)
+  self.send_button.pack(side='left',fill='x',expand=True)
+  self.selection_bar=bar
+  self.stage_num=1
+  self.show_stage(1)
   self.progress_q=queue.Queue()
   self.after(100,self.progress_poll)
+ def show_stage(self,number):
+  self.stage_num=number
+  labels={1:'ШАГ 1 ИЗ 3  ·  ВЫБОР ФАЙЛОВ',2:'ШАГ 2 ИЗ 3  ·  ПРОВЕРКА ПЕРЕД ОТПРАВКОЙ',3:'ШАГ 3 ИЗ 3  ·  ПУБЛИКАЦИЯ'}
+  self.stage.set(labels[number])
+  if number==1:
+   self.selection_bar.pack(fill='x',pady=6,before=self.count_label)
+   self.back_button.state(['disabled'])
+   self.send_button.configure(text='ДАЛЕЕ: ПРОВЕРИТЬ ФАЙЛЫ →',command=self.review)
+   self.send_button.state(['!disabled'])
+   self.current.set('Выберите HTML-файлы, папку или ZIP-архив')
+  elif number==2:
+   self.selection_bar.pack_forget()
+   self.back_button.state(['!disabled'])
+   self.send_button.configure(text='ОПУБЛИКОВАТЬ НА САЙТЕ',command=self.publish)
+   self.send_button.state(['!disabled'])
+   self.current.set('Проверьте список и папку назначения. Будут загружены только HTML-файлы.')
+  else:
+   self.selection_bar.pack_forget()
+   self.back_button.state(['disabled'])
+   self.send_button.state(['disabled'])
+ def go_back(self):
+  if self.busy:return
+  self.show_stage(1)
+ def review(self):
+  if not self.entries:
+   messagebox.showinfo('Нет файлов','Сначала выберите HTML-файлы, папку или ZIP')
+   return
+  if not self.cfg:
+   messagebox.showerror('Не настроено','Попросите администратора настроить папку публикации')
+   return
+  self.show_stage(2)
  def refresh(self):
   self.items.delete(0,'end')
   for local,rel in self.entries:self.items.insert('end',rel)
@@ -160,11 +200,11 @@ class Upload(Base):
     validate_name(Path(rel).name)
     if not Path(p).is_file():raise UploadError('Файл не найден: '+rel)
   except Exception as e:messagebox.showerror('Проверка',str(e));return
-  if not messagebox.askyesno('Подтверждение',f'Опубликовать {len(self.entries)} HTML-файлов? Вложенные HTML, HTML_PREPS, HTML_AUDS будут направлены в соответствующие каталоги.'):return
+  if not messagebox.askyesno('Подтверждение',f'Начать публикацию {len(self.entries)} HTML-файлов в {self.cfg["folder"]}?'):return
+  self.show_stage(3)
   entries=list(self.entries);c=self.cfg.copy();self.progress_q=queue.Queue()
   self.progress['value']=0
   self.progress['maximum']=len(entries)
-  self.send_button.state(['disabled'])
   def job():
    results=[];folder_cache={}
    for i,(local,rel) in enumerate(entries,1):
@@ -181,10 +221,10 @@ class Upload(Base):
     self.progress_q.put(('completed',i))
    return results
   def done(results):
-   self.send_button.state(['!disabled'])
    succeeded={rel for (_,rel),r in results if r.get('status')=='published'}
    self.entries=[e for e in self.entries if e[1] not in succeeded]
    self.refresh()
+   self.show_stage(2 if self.entries else 1)
    ok=len(succeeded);failed=len(results)-ok
    self.current.set(f'Готово. Успешно: {ok}, ошибок: {failed}')
    self.status.set(f'Опубликовано: {ok}. Осталось в списке: {len(self.entries)}')
