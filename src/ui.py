@@ -12,7 +12,7 @@ TRANSPORT=WinscpTransport(ROOT/'WinSCP'/'WinSCP.com')
 RED='#b42332'; BG='#f6f7f9'
 class Base(tk.Tk):
  def __init__(self,title):
-  super().__init__();self.title(title);self.geometry('840x660');self.minsize(700,520);self.configure(bg=BG)
+  super().__init__();self.title(title);self.geometry('900x700');self.minsize(730,560);self.configure(bg=BG)
   self.q=queue.Queue();self.busy=False
   try:self.iconbitmap(str(ROOT/'assets'/('admin.ico' if 'Администратор' in title else 'upload.ico')))
   except (OSError,tk.TclError):pass
@@ -84,8 +84,19 @@ class Admin(Base):
 class Upload(Base):
  def __init__(self):
   super().__init__('РКТМ — Загрузка расписания')
-  ttk.Label(self.main,text='Загрузка расписания',style='Heading.TLabel').pack(anchor='w',pady=(6,3))
-  ttk.Label(self.main,text='Три шага: выбрать → проверить → опубликовать. Папки из ZIP на сервер не переносятся.').pack(anchor='w',pady=(0,12))
+  brand=ttk.Frame(self.main);brand.pack(fill='x',pady=(2,14))
+  logo=tk.Label(brand,text='РКТМ',font=('Segoe UI',16,'bold'),fg='white',bg=RED,padx=18,pady=12)
+  logo.pack(side='left',padx=(0,16))
+  header=ttk.Frame(brand);header.pack(side='left',fill='x',expand=True)
+  ttk.Label(header,text='Загрузка расписания',style='Heading.TLabel').pack(anchor='w')
+  ttk.Label(header,text='Без лишних действий: выберите, проверьте, опубликуйте.').pack(anchor='w')
+  self.steps_frame=ttk.Frame(self.main);self.steps_frame.pack(fill='x',pady=(0,12))
+  self.step_labels=[]
+  for i,label in enumerate(('01  Выбор файлов','02  Проверка','03  Публикация'),1):
+   cell=ttk.Frame(self.steps_frame);cell.pack(side='left',fill='x',expand=True,padx=3)
+   widget=tk.Label(cell,text=label,font=('Segoe UI',10,'bold'),padx=8,pady=12,bd=0)
+   widget.pack(fill='x')
+   self.step_labels.append(widget)
   try:self.cfg=settings.load()
   except Exception as e:self.cfg=None;self.status.set(str(e))
   ttk.Label(self.main,text='Куда будет загружено: '+(self.cfg.get('folder','—') if self.cfg else 'не настроено'),wraplength=700).pack(anchor='w',pady=(0,12))
@@ -93,9 +104,10 @@ class Upload(Base):
   self.stage=tk.StringVar(value='ШАГ 1 ИЗ 3  ·  ВЫБОР ФАЙЛОВ')
   ttk.Label(self.main,textvariable=self.stage,font=('Segoe UI',11,'bold'),foreground='#a71f30').pack(anchor='w',pady=(0,5))
   bar=ttk.Frame(self.main);bar.pack(fill='x',pady=6)
-  ttk.Button(bar,text='1. Выбрать файлы',command=self.pick).pack(side='left',expand=True,fill='x',padx=3)
+  ttk.Button(bar,text='Выбрать HTML',command=self.pick).pack(side='left',expand=True,fill='x',padx=3)
   ttk.Button(bar,text='Выбрать папку',command=self.add_folder).pack(side='left',expand=True,fill='x',padx=3)
-  ttk.Button(bar,text='Открыть ZIP',command=self.add_zip).pack(side='left',expand=True,fill='x',padx=3)
+  ttk.Button(bar,text='Открыть ZIP-архив',command=self.add_zip).pack(side='left',expand=True,fill='x',padx=3)
+  ttk.Label(self.main,text='СПИСОК ПУБЛИКАЦИИ',font=('Segoe UI',10,'bold'),foreground='#697180').pack(anchor='w',pady=(8,0))
   self.count=tk.StringVar(value='HTML-файлов для публикации: 0')
   self.count_label=ttk.Label(self.main,textvariable=self.count)
   self.count_label.pack(anchor='w',pady=6)
@@ -111,6 +123,7 @@ class Upload(Base):
   self.send_button=ttk.Button(nav,text='ДАЛЕЕ: ПРОВЕРИТЬ ФАЙЛЫ →',style='Primary.TButton',command=self.review)
   self.send_button.pack(side='left',fill='x',expand=True)
   self.selection_bar=bar
+  ttk.Label(self.main,text='Разработчик ПО: Сорокин Дмитрий Денисович',font=('Segoe UI',9),foreground='#697180').pack(side='bottom',anchor='e',pady=(4,0))
   self.stage_num=1
   self.show_stage(1)
   self.progress_q=queue.Queue()
@@ -119,6 +132,9 @@ class Upload(Base):
   self.stage_num=number
   labels={1:'ШАГ 1 ИЗ 3  ·  ВЫБОР ФАЙЛОВ',2:'ШАГ 2 ИЗ 3  ·  ПРОВЕРКА ПЕРЕД ОТПРАВКОЙ',3:'ШАГ 3 ИЗ 3  ·  ПУБЛИКАЦИЯ'}
   self.stage.set(labels[number])
+  for i,widget in enumerate(self.step_labels,1):
+   active=(i==number)
+   widget.configure(bg=RED if active else '#e9ebef',fg='white' if active else '#566070')
   if number==1:
    self.selection_bar.pack(fill='x',pady=6,before=self.count_label)
    self.back_button.state(['disabled'])
