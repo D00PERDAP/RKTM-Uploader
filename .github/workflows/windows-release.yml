@@ -32,24 +32,30 @@ jobs:
         run: choco install innosetup --yes --no-progress
       - name: Create installer
         shell: pwsh
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+        run: |
+          if ('${{ matrix.arch }}' -eq 'x64') {
+            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DNativeX64 installer.iss
+          } else {
+            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
       - name: Sign and verify installer
         if: ${{ env.RKTM_SIGNING_PFX_B64 != '' && env.RKTM_SIGNING_PFX_PASSWORD != '' }}
         shell: pwsh
-        run: ./sign-windows.ps1 -Installer release/RKTM-Setup.exe
+        run: ./sign-windows.ps1 -Installer release/RKTM-Setup-${{ matrix.arch }}.exe
       - name: Create portable package
         shell: pwsh
         run: Compress-Archive -Path dist/RKTM-Admin,dist/RKTM-Uploader -DestinationPath "RKTM-Portable-${{ matrix.arch }}.zip"
       - name: Compute hashes
         shell: pwsh
         run: |
-          Get-FileHash release/RKTM-Setup.exe -Algorithm SHA256 | Format-List | Out-File "SHA256-${{ matrix.arch }}.txt"
+          Get-FileHash release/RKTM-Setup-${{ matrix.arch }}.exe -Algorithm SHA256 | Format-List | Out-File "SHA256-${{ matrix.arch }}.txt"
           Get-FileHash "RKTM-Portable-${{ matrix.arch }}.zip" -Algorithm SHA256 | Format-List | Out-File "SHA256-${{ matrix.arch }}.txt" -Append
       - uses: actions/upload-artifact@v4
         with:
           name: RKTM-windows-${{ matrix.arch }}
           path: |
-            release/RKTM-Setup.exe
+            release/RKTM-Setup-${{ matrix.arch }}.exe
             RKTM-Portable-${{ matrix.arch }}.zip
             SHA256-${{ matrix.arch }}.txt
 
@@ -70,9 +76,9 @@ jobs:
       - name: Test and build 32-bit portable apps
         shell: pwsh
         run: ./build-windows.ps1
-      - name: Install Inno Setup
+      - name: Install Windows 7 compatible Inno Setup
         shell: pwsh
-        run: choco install innosetup --yes --no-progress
+        run: choco install innosetup --version=6.2.2 --yes --no-progress --allow-downgrade
       - name: Compile legacy installer
         shell: pwsh
         run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DLegacyWin7 installer.iss'

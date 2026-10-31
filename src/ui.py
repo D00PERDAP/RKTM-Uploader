@@ -13,16 +13,22 @@ TRANSPORT=WinscpTransport(ROOT/'WinSCP'/'WinSCP.com')
 PANEL='#F4F4F4'
 class Base(tk.Tk):
  def __init__(self,title):
-  super().__init__();self.title(title);self.geometry('980x700');self.minsize(820,560);self.configure(bg=BG)
+  super().__init__();self.title(title);self.geometry('1040x760');self.minsize(940,680);self.configure(bg=BG)
   self.q=queue.Queue();self.busy=False
   try:self.iconbitmap(str(ROOT/'assets'/('admin.ico' if 'Администратор' in title else 'upload.ico')))
   except (OSError,tk.TclError):pass
-  self.protocol('WM_DELETE_WINDOW',self.destroy)
+  self.protocol('WM_DELETE_WINDOW',self.close)
   self.after(100,self.poll)
   self.main=ttk.Frame(self,padding=20);self.main.pack(fill='both',expand=True)
   style=ttk.Style();style.theme_use('clam');style.configure('TFrame',background=BG);style.configure('TLabel',background=BG,foreground=INK,font=('Segoe UI',10));style.configure('TButton',font=('Segoe UI',11),padding=(13,11));style.map('TButton',background=[('active','#e8e9ed')]);style.configure('TEntry',font=('Segoe UI',11),padding=6);style.configure('Heading.TLabel',font=('Segoe UI',20,'bold'),foreground=INK);style.configure('Primary.TButton',font=('Segoe UI',12,'bold'),padding=(14,15),foreground='white',background=RED);style.map('Primary.TButton',background=[('active','#BD171A'),('disabled','#aab0b6')]);style.configure('Horizontal.TProgressbar',background=RED,troughcolor='#E5E4E4',thickness=14)
   self.status=tk.StringVar(value='Готово')
   ttk.Label(self,textvariable=self.status,background=BG,wraplength=650).pack(fill='x',padx=20,pady=8)
+ def close(self):
+  if self.busy:
+   messagebox.showinfo('Публикация выполняется','Дождитесь завершения загрузки перед закрытием программы.')
+   return
+  for temp in getattr(self,'temps',[]):temp.cleanup()
+  self.destroy()
  def launch(self,job,done):
   if self.busy:return
   self.busy=True;self.status.set('Выполняется операция…')
@@ -128,7 +134,7 @@ class Upload(Base):
   logo.pack(side='left',padx=(0,16))
   header=ttk.Frame(brand);header.pack(side='left',fill='x',expand=True)
   ttk.Label(header,text='Загрузка расписания',style='Heading.TLabel').pack(anchor='w')
-  ttk.Label(header,text='Без лишних действий: выберите, проверьте, опубликуйте.').pack(anchor='w')
+  ttk.Label(header,text='Выберите файлы расписания и отправьте их на сайт колледжа.').pack(anchor='w')
   self.steps_frame=ttk.Frame(self.main);self.steps_frame.pack(fill='x',pady=(0,12))
   self.step_labels=[]
   for i,label in enumerate(('01  Выбор файлов','02  Проверка','03  Публикация'),1):
@@ -144,14 +150,23 @@ class Upload(Base):
   ttk.Label(self.main,textvariable=self.stage,font=('Segoe UI',11,'bold'),foreground='#a71f30').pack(anchor='w',pady=(0,5))
   bar=tk.Frame(self.main,bg=BG);bar.pack(fill='x',pady=6)
   for label,glyph,callback in (('ZIP-архив','zip',self.add_zip),('Папка','folder',self.add_folder),('HTML-файлы','html',self.pick)):
-   action_button(bar,label,glyph,callback).pack(side='left',padx=(0,8))
+   cell=ttk.Frame(bar);cell.pack(side='left',padx=(0,8))
+   icon(cell,glyph,22).pack(side='left',padx=(0,5))
+   action_button(cell,label,glyph,callback).pack(side='left')
 
   ttk.Label(self.main,text='СПИСОК ПУБЛИКАЦИИ',font=('Segoe UI',10,'bold'),foreground='#60656C').pack(anchor='w',pady=(8,0))
   self.count=tk.StringVar(value='HTML-файлов для публикации: 0')
   self.count_label=ttk.Label(self.main,textvariable=self.count)
   self.count_label.pack(anchor='w',pady=6)
   self.items=tk.Listbox(self.main,font=('Segoe UI',10),borderwidth=1,relief='solid',highlightthickness=0,selectbackground=RED,selectforeground='white',background=BG,activestyle='none')
-  self.items.pack(fill='both',expand=True,pady=6)
+  list_frame=ttk.Frame(self.main)
+  list_frame.pack(fill='both',expand=True,pady=6)
+  self.items.pack(in_=list_frame,side='left',fill='both',expand=True)
+  scrollbar=ttk.Scrollbar(list_frame,orient='vertical',command=self.items.yview)
+  scrollbar.pack(side='right',fill='y')
+  self.items.configure(yscrollcommand=scrollbar.set)
+  self.items.bind('<Delete>',lambda event:self.remove_selected())
+  ttk.Button(list_frame,text='Убрать выбранное',command=self.remove_selected).pack(side='bottom',fill='x')
   self.progress=ttk.Progressbar(self.main,mode='determinate',maximum=1)
   self.progress.pack(fill='x',pady=6)
   self.current=tk.StringVar(value='Готово к выбору файлов')
@@ -219,6 +234,11 @@ class Upload(Base):
     return
    known.add(rel.casefold())
   self.entries.extend(new)
+  self.refresh()
+ def remove_selected(self):
+  if self.busy or self.stage_num!=1:return
+  selected=set(self.items.curselection())
+  self.entries=[entry for index,entry in enumerate(self.entries) if index not in selected]
   self.refresh()
  def pick(self):
   if self.busy:return

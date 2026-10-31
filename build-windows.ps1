@@ -2,6 +2,8 @@ $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 python -m pytest tests -q
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+python -c "import sys; sys.path.insert(0, 'src'); from ui import Upload, Admin; a=Upload(); a.update(); a.destroy(); b=Admin(); b.update(); b.destroy()"
+if ($LASTEXITCODE -ne 0) { throw 'Window creation smoke test failed' }
 python -m PyInstaller --clean --noconfirm --windowed --onedir --name RKTM-Admin --version-file assets/version_info.txt --icon assets/admin.ico --add-data "WinSCP;WinSCP" --add-data "assets;assets" src/admin.py
 if ($LASTEXITCODE -ne 0) { throw 'Admin build failed' }
 python -m PyInstaller --clean --noconfirm --windowed --onedir --name RKTM-Uploader --version-file assets/version_info.txt --icon assets/upload.ico --add-data "WinSCP;WinSCP" --add-data "assets;assets" src/employee.py

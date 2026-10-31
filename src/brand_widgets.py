@@ -42,13 +42,7 @@ def icon(parent,name,size=24,color=RED,bg=BG):
     return c
 
 def action_button(parent,label,ico,command,primary=False):
-    bg=RED if primary else BG
-    fg='white' if primary else INK
-    frame=tk.Frame(parent,bg=bg,highlightbackground=RED if primary else '#DDDDDD',
-                   highlightthickness=1,bd=0,cursor='hand2')
-    glyph=icon(frame,ico,26,'white' if primary else RED,bg)
-    glyph.pack(side='left',padx=(12,7),pady=10)
-    text=tk.Label(frame,text=label,bg=bg,fg=fg,font=('Segoe UI',10,'bold'),cursor='hand2')
-    text.pack(side='left',padx=(0,12),pady=10)
-    for w in (frame,glyph,text):w.bind('<Button-1>',lambda event: command())
-    return frame
+    # Native ttk buttons provide focus, keyboard activation and disabled state.
+    from tkinter import ttk
+    return ttk.Button(parent,text=label,command=command,
+                      style='Primary.TButton' if primary else 'TButton',takefocus=True)
