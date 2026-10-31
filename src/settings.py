@@ -15,13 +15,19 @@ def _crypt(data, decrypt):
     inp=BLOB(len(data),ctypes.cast(raw,ctypes.POINTER(ctypes.c_byte)))
     out=BLOB()
     fn=ctypes.windll.crypt32.CryptUnprotectData if decrypt else ctypes.windll.crypt32.CryptProtectData
+    # Pointer-width-safe declarations on both x86 and x64 Windows.
+    fn.argtypes=[ctypes.POINTER(BLOB),ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,wintypes.DWORD,ctypes.POINTER(BLOB)]
+    fn.restype=wintypes.BOOL
+    free=ctypes.windll.kernel32.LocalFree
+    free.argtypes=[ctypes.c_void_p]
+    free.restype=ctypes.c_void_p
     if decrypt:
         ok=fn(ctypes.byref(inp),None,None,None,None,0,ctypes.byref(out))
     else:
         ok=fn(ctypes.byref(inp),None,None,None,None,0,ctypes.byref(out))
     if not ok: raise UploadError('Не удалось защитить/расшифровать пароль Windows')
     try: return ctypes.string_at(out.pbData,out.cbData)
-    finally: ctypes.windll.kernel32.LocalFree(out.pbData)
+    finally: free(out.pbData)
 
 def save(c):
     APP.mkdir(parents=True,exist_ok=True)

@@ -14,7 +14,7 @@ if (-not $signTool) {throw 'signtool.exe not found'}
 $temp=Join-Path $env:RUNNER_TEMP 'rktm-signing.pfx'
 try {
  [IO.File]::WriteAllBytes($temp,[Convert]::FromBase64String($env:RKTM_SIGNING_PFX_B64))
- $targets=@('dist/RKTM-Admin/RKTM-Admin.exe','dist/RKTM-Uploader/RKTM-Uploader.exe')
+ $targets=@('dist/RKTM-Uploader/RKTM-Uploader.exe')
  if (-not $Installer) { foreach($target in $targets) {
   & $signTool sign /fd SHA256 /f $temp /p $env:RKTM_SIGNING_PFX_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $target
   if ($LASTEXITCODE -ne 0) {throw "Signing failed for $target"}

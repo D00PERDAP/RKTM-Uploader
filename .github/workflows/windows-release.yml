@@ -4,63 +4,8 @@ on:
   push:
     branches: [main]
 jobs:
-  build:
-    runs-on: windows-2022
-    env:
-      RKTM_SIGNING_PFX_B64: ${{ secrets.RKTM_SIGNING_PFX_B64 }}
-      RKTM_SIGNING_PFX_PASSWORD: ${{ secrets.RKTM_SIGNING_PFX_PASSWORD }}
-    strategy:
-      matrix:
-        arch: [x86, x64]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          architecture: ${{ matrix.arch }}
-      - name: Install build tooling
-        run: python -m pip install "pyinstaller==6.11.1" "pytest==8.3.4"
-      - name: Test and build
-        shell: pwsh
-        run: ./build-windows.ps1
-      - name: Sign application executables (only with trusted certificate)
-        if: ${{ env.RKTM_SIGNING_PFX_B64 != '' && env.RKTM_SIGNING_PFX_PASSWORD != '' }}
-        shell: pwsh
-        run: ./sign-windows.ps1
-      - name: Install Inno Setup
-        shell: pwsh
-        run: choco install innosetup --yes --no-progress
-      - name: Create installer
-        shell: pwsh
-        run: |
-          if ('${{ matrix.arch }}' -eq 'x64') {
-            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DNativeX64 installer.iss
-          } else {
-            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
-          }
-          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
-      - name: Sign and verify installer
-        if: ${{ env.RKTM_SIGNING_PFX_B64 != '' && env.RKTM_SIGNING_PFX_PASSWORD != '' }}
-        shell: pwsh
-        run: ./sign-windows.ps1 -Installer release/RKTM-Setup-${{ matrix.arch }}.exe
-      - name: Create portable package
-        shell: pwsh
-        run: Compress-Archive -Path dist/RKTM-Admin,dist/RKTM-Uploader -DestinationPath "RKTM-Portable-${{ matrix.arch }}.zip"
-      - name: Compute hashes
-        shell: pwsh
-        run: |
-          Get-FileHash release/RKTM-Setup-${{ matrix.arch }}.exe -Algorithm SHA256 | Format-List | Out-File "SHA256-${{ matrix.arch }}.txt"
-          Get-FileHash "RKTM-Portable-${{ matrix.arch }}.zip" -Algorithm SHA256 | Format-List | Out-File "SHA256-${{ matrix.arch }}.txt" -Append
-      - uses: actions/upload-artifact@v4
-        with:
-          name: RKTM-windows-${{ matrix.arch }}
-          path: |
-            release/RKTM-Setup-${{ matrix.arch }}.exe
-            RKTM-Portable-${{ matrix.arch }}.zip
-            SHA256-${{ matrix.arch }}.txt
-
-  legacy-win7-x86:
-    name: Windows 7 SP1 (32-bit) legacy
+  universal-x86:
+    name: Unified x86 — Windows 7 SP1 and later
     runs-on: windows-2022
     env:
       RKTM_SIGNING_PFX_B64: ${{ secrets.RKTM_SIGNING_PFX_B64 }}
@@ -72,29 +17,51 @@ jobs:
           python-version: '3.8'
           architecture: 'x86'
       - name: Install compatible build tooling
-        run: python -m pip install "pyinstaller==5.13.2" "pytest==7.4.4"
-      - name: Test and build 32-bit portable apps
+        run: python -m pip install "pyinstaller==5.13.2" "pytest==7.4.4" "pillow==10.4.0"
+      - name: Test, render screens and build unified application
         shell: pwsh
         run: ./build-windows.ps1
+      - name: Sign application when a trusted certificate is configured
+        if: ${{ env.RKTM_SIGNING_PFX_B64 != '' && env.RKTM_SIGNING_PFX_PASSWORD != '' }}
+        shell: pwsh
+        run: ./sign-windows.ps1
       - name: Install Windows 7 compatible Inno Setup
         shell: pwsh
         run: choco install innosetup --version=6.2.2 --yes --no-progress --allow-downgrade
-      - name: Compile legacy installer
-        shell: pwsh
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DLegacyWin7 installer.iss'
-      - name: Sign and verify legacy installer
-        if: ${{ env.RKTM_SIGNING_PFX_B64 != '' && env.RKTM_SIGNING_PFX_PASSWORD != '' }}
-        shell: pwsh
-        run: ./sign-windows.ps1 -Installer release/RKTM-Setup-Win7-x86.exe
-      - name: Bundle portable fallback and hashes
+      - name: Compile installer
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/RKTM-Admin,dist/RKTM-Uploader -DestinationPath "RKTM-Portable-Win7-x86.zip"
-          Get-FileHash release/RKTM-Setup-Win7-x86.exe -Algorithm SHA256 | Out-File "SHA256-Win7-x86.txt"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+      - name: Sign and verify installer
+        if: ${{ env.RKTM_SIGNING_PFX_B64 != '' && env.RKTM_SIGNING_PFX_PASSWORD != '' }}
+        shell: pwsh
+        run: ./sign-windows.ps1 -Installer release/RKTM-Setup-5.0.0-x86.exe
+      - name: Test silent install and packaged startup
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'RKTM-install-check'
+          $install = Start-Process release/RKTM-Setup-5.0.0-x86.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$installDir" -PassThru -Wait
+          if ($install.ExitCode -ne 0) { throw 'Silent install failed' }
+          $exe = Join-Path $installDir 'Uploader\RKTM-Uploader.exe'
+          if (-not (Test-Path $exe)) { throw 'Installed application missing' }
+          foreach ($mode in @('', '--admin')) {
+            if ($mode) { $app = Start-Process $exe -ArgumentList $mode -PassThru } else { $app = Start-Process $exe -PassThru }
+            Start-Sleep -Seconds 4
+            $app.Refresh()
+            if ($app.HasExited -or $app.MainWindowHandle -eq 0) { throw 'Packaged UI did not open' }
+            Stop-Process -Id $app.Id
+          }
+          $uninstall = Start-Process (Join-Path $installDir 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -PassThru -Wait
+          if ($uninstall.ExitCode -ne 0) { throw 'Uninstall failed' }
+      - name: Compute checksum
+        shell: pwsh
+        run: Get-FileHash release/RKTM-Setup-5.0.0-x86.exe -Algorithm SHA256 | Format-List | Out-File release/SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: RKTM-Windows7-x86
-          path: |
-            release/RKTM-Setup-Win7-x86.exe
-            RKTM-Portable-Win7-x86.zip
-            SHA256-Win7-x86.txt
+          name: RKTM-5.0.0-Setup-x86
+          path: release/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RKTM-5.0.0-real-screens
+          path: previews/*.png

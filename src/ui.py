@@ -1,323 +1,492 @@
-import os,sys,queue,threading,traceback
-from concurrent.futures import ThreadPoolExecutor,as_completed
+"""Unified native desktop interface. Standard-library only, Python 3.8 / Tk 8.6."""
+import os
+import sys
+import queue
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk,filedialog,messagebox
-from core import WinscpTransport,UploadError,validate_folder,validate_connection,validate_name
-from selection import collect_folder,collect_zip,destination
+from tkinter import ttk, filedialog, messagebox
+from core import WinscpTransport, UploadError, validate_folder, validate_connection, validate_name
+from selection import collect_folder, collect_zip
+from brand_widgets import icon, RED, YELLOW, INK
 import settings
-from brand_widgets import icon,action_button,RED,YELLOW,INK,BG
+import history
 
-ROOT=(Path(getattr(sys,'_MEIPASS')) if getattr(sys,'frozen',False) else Path(__file__).resolve().parent.parent)
+ROOT=Path(getattr(sys, '_MEIPASS')) if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
 TRANSPORT=WinscpTransport(ROOT/'WinSCP'/'WinSCP.com')
-PANEL='#F4F4F4'
-class Base(tk.Tk):
- def __init__(self,title):
-  super().__init__();self.title(title);self.geometry('1040x760');self.minsize(940,680);self.configure(bg=BG)
-  self.q=queue.Queue();self.busy=False
-  try:self.iconbitmap(str(ROOT/'assets'/('admin.ico' if 'Администратор' in title else 'upload.ico')))
-  except (OSError,tk.TclError):pass
-  self.protocol('WM_DELETE_WINDOW',self.close)
-  self.after(100,self.poll)
-  self.main=ttk.Frame(self,padding=20);self.main.pack(fill='both',expand=True)
-  style=ttk.Style();style.theme_use('clam');style.configure('TFrame',background=BG);style.configure('TLabel',background=BG,foreground=INK,font=('Segoe UI',10));style.configure('TButton',font=('Segoe UI',11),padding=(13,11));style.map('TButton',background=[('active','#e8e9ed')]);style.configure('TEntry',font=('Segoe UI',11),padding=6);style.configure('Heading.TLabel',font=('Segoe UI',20,'bold'),foreground=INK);style.configure('Primary.TButton',font=('Segoe UI',12,'bold'),padding=(14,15),foreground='white',background=RED);style.map('Primary.TButton',background=[('active','#BD171A'),('disabled','#aab0b6')]);style.configure('Horizontal.TProgressbar',background=RED,troughcolor='#E5E4E4',thickness=14)
-  self.status=tk.StringVar(value='Готово')
-  ttk.Label(self,textvariable=self.status,background=BG,wraplength=650).pack(fill='x',padx=20,pady=8)
- def close(self):
-  if self.busy:
-   messagebox.showinfo('Публикация выполняется','Дождитесь завершения загрузки перед закрытием программы.')
-   return
-  for temp in getattr(self,'temps',[]):temp.cleanup()
-  self.destroy()
- def launch(self,job,done):
-  if self.busy:return
-  self.busy=True;self.status.set('Выполняется операция…')
-  def task():
-   try: self.q.put((done,job(),None))
-   except Exception as e:self.q.put((done,None,str(e)))
-  threading.Thread(target=task,daemon=True).start()
- def poll(self):
-  try:
-   while True:
-    done,result,error=self.q.get_nowait();self.busy=False
-    if error:self.status.set('Ошибка: '+error[:250]);messagebox.showerror('Ошибка',error[:1000])
-    else:self.status.set('Операция выполнена');done(result)
-  except queue.Empty:pass
-  self.after(100,self.poll)
+BG='#F4F4F4'
+WHITE='#FFFFFF'
+GRAY='#60656C'
+BORDER='#DADDE1'
 
-class Admin(Base):
- def __init__(self):
-  super().__init__('РКТМ — Администратор')
-  ttk.Label(self.main,text='Настройка публикации',style='Heading.TLabel').pack(anchor='w',pady=10)
-  self.vars={}
-  for key,label,initial in [('host','Адрес сервера',''),('user','Пользователь SFTP',''),('port','Порт','22'),('password','Пароль',''),('hostkey','Отпечаток ключа сервера',''),('folder','Каталог на сервере','/')]:
-   ttk.Label(self.main,text=label).pack(anchor='w')
-   v=tk.StringVar(value=initial);self.vars[key]=v
-   ttk.Entry(self.main,textvariable=v,show='•' if key=='password' else '').pack(fill='x',pady=(0,7))
-  bar=ttk.Frame(self.main);bar.pack(fill='x',pady=5)
-  ttk.Button(bar,text='Подключиться',command=self.connect).pack(side='left')
-  ttk.Button(bar,text='На уровень выше',command=self.parent_folder).pack(side='left',padx=8)
-  ttk.Button(bar,text='Сохранить эту папку',command=self.save).pack(side='right')
-  self.folders=tk.Listbox(self.main,font=('Segoe UI',11),height=8);self.folders.pack(fill='both',expand=True,pady=7)
-  self.folders.bind('<Double-1>',self.enter_folder)
-  try:
-   c=settings.load()
-   if c:
-    for k,v in c.items():
-     if k in self.vars:self.vars[k].set(v)
-  except Exception:pass
- def config(self):return {k:v.get() for k,v in self.vars.items()}
- def connect(self):
-  c=self.config();p=c['folder'] or '/';c['folder']=p
-  try:validate_connection(c);validate_folder(p)
-  except Exception as e:messagebox.showerror('Проверьте данные',str(e));return
-  self.launch(lambda:TRANSPORT.list_dir(c,p),self.show_folders)
- def show_folders(self,names):
-  self.folders.delete(0,'end')
-  for n in names:self.folders.insert('end',n)
-  self.status.set(f'Папка открыта: {self.vars["folder"].get()}')
- def enter_folder(self,event=None):
-  sel=self.folders.curselection()
-  if not sel:return
-  parent=self.vars['folder'].get().rstrip('/')
-  self.vars['folder'].set(parent+'/'+self.folders.get(sel[0]));self.connect()
- def parent_folder(self):
-  p=self.vars['folder'].get().rstrip('/');self.vars['folder'].set(p.rsplit('/',1)[0] or '/');self.connect()
- def save(self):
-  try:
-   c=self.config();validate_connection(c);c['folder']=validate_folder(c['folder']);settings.save(c);messagebox.showinfo('Сохранено','Папка публикации закреплена')
-  except Exception as e:messagebox.showerror('Ошибка',str(e))
 
-class Upload(Base):
- def __init__(self):
-  super().__init__('РКТМ — Загрузка расписания')
-  # Brandbook desktop layout: restrained red navigation, white content area.
-  shell=self.main
-  sidebar=tk.Frame(shell,bg=RED,width=173)
-  sidebar.pack(side='left',fill='y',padx=(0,16))
-  sidebar.pack_propagate(False)
-  tk.Label(sidebar,text='РКТМ',bg=RED,fg='white',font=('Segoe UI',23,'bold'),anchor='w').pack(fill='x',padx=17,pady=(24,4))
-  tk.Label(sidebar,text='ЗАГРУЗЧИК\nРАСПИСАНИЙ',bg=RED,fg='white',font=('Segoe UI',9,'bold'),anchor='w',justify='left').pack(fill='x',padx=18,pady=(0,30))
-  self.side_items=[]
-  for name,glyph,number in (('Выбор файлов','folder',1),('Проверка','check',2),('Публикация','upload',3)):
-   cell=tk.Frame(sidebar,bg=RED,cursor='hand2')
-   cell.pack(fill='x',pady=2)
-   picture=icon(cell,glyph,20,'white',RED);picture.pack(side='left',padx=(17,8),pady=11)
-   lbl=tk.Label(cell,text=name,bg=RED,fg='white',font=('Segoe UI',10),cursor='hand2',anchor='w')
-   lbl.pack(side='left',fill='x',expand=True)
-   self.side_items.append((cell,lbl,picture,number))
-   def navigate(n=number):
-    if self.busy:return
-    if n==1:self.show_stage(1)
-    elif n==2:self.review()
-    else:
-     if self.stage_num==2:self.publish()
-     else:self.review()
-   for elem in (cell,lbl,picture):elem.bind('<Button-1>',lambda e,f=navigate:f())
-  tk.Label(sidebar,text='© Сорокин Д. Д.',bg=RED,fg='white',font=('Segoe UI',8)).pack(side='bottom',pady=16)
-  self.main=ttk.Frame(shell,padding=(0,8,8,4))
-  self.main.pack(side='left',fill='both',expand=True)
-  brand=ttk.Frame(self.main);brand.pack(fill='x',pady=(2,14))
-  # Prefer the college's official logo when provided in assets; keep Win7-compatible PNG.
-  self.brand_logo=None
-  logo_path=ROOT/'assets'/'rktm-logo.png'
-  if logo_path.is_file():
-   try:
-    img=tk.PhotoImage(file=str(logo_path))
-    factor=max(1,(img.width()+159)//160,(img.height()+63)//64)
-    self.brand_logo=img.subsample(factor,factor)
-    logo=tk.Label(brand,image=self.brand_logo,bg=BG,padx=4,pady=4)
-   except tk.TclError:
-    logo=tk.Label(brand,text='РКТМ',font=('Segoe UI',16,'bold'),fg='white',bg=RED,padx=18,pady=12)
-  else:
-   logo=tk.Label(brand,text='РКТМ',font=('Segoe UI',16,'bold'),fg='white',bg=RED,padx=18,pady=12)
-  logo.pack(side='left',padx=(0,16))
-  header=ttk.Frame(brand);header.pack(side='left',fill='x',expand=True)
-  ttk.Label(header,text='Загрузка расписания',style='Heading.TLabel').pack(anchor='w')
-  ttk.Label(header,text='Выберите файлы расписания и отправьте их на сайт колледжа.').pack(anchor='w')
-  self.steps_frame=ttk.Frame(self.main);self.steps_frame.pack(fill='x',pady=(0,12))
-  self.step_labels=[]
-  for i,label in enumerate(('01  Выбор файлов','02  Проверка','03  Публикация'),1):
-   cell=ttk.Frame(self.steps_frame);cell.pack(side='left',fill='x',expand=True,padx=3)
-   widget=tk.Label(cell,text=label,font=('Segoe UI',10,'bold'),padx=8,pady=10,bd=0)
-   widget.pack(fill='x')
-   self.step_labels.append(widget)
-  try:self.cfg=settings.load()
-  except Exception as e:self.cfg=None;self.status.set(str(e))
-  ttk.Label(self.main,text='Куда будет загружено: '+(self.cfg.get('folder','—') if self.cfg else 'не настроено'),wraplength=700).pack(anchor='w',pady=(0,12))
-  self.entries=[];self.temps=[]
-  self.stage=tk.StringVar(value='ШАГ 1 ИЗ 3  ·  ВЫБОР ФАЙЛОВ')
-  ttk.Label(self.main,textvariable=self.stage,font=('Segoe UI',11,'bold'),foreground='#a71f30').pack(anchor='w',pady=(0,5))
-  bar=tk.Frame(self.main,bg=BG);bar.pack(fill='x',pady=6)
-  for label,glyph,callback in (('ZIP-архив','zip',self.add_zip),('Папка','folder',self.add_folder),('HTML-файлы','html',self.pick)):
-   cell=ttk.Frame(bar);cell.pack(side='left',padx=(0,8))
-   icon(cell,glyph,22).pack(side='left',padx=(0,5))
-   action_button(cell,label,glyph,callback).pack(side='left')
+class App(tk.Tk):
+    def __init__(self, initial_tab='schedule'):
+        super().__init__()
+        self.title('РКТМ — Расписание')
+        self.geometry('1080x760')
+        self.minsize(900, 700)
+        self.configure(bg=BG)
+        self.busy=False
+        self.entries=[]
+        self.temps=[]
+        self.stage_num=1
+        self.q=queue.Queue()
+        self.progress_q=queue.Queue()
+        self.cfg=None
+        self.status=tk.StringVar(value='Готово к работе')
+        try:
+            self.iconbitmap(str(ROOT/'assets'/'upload.ico'))
+        except (OSError, tk.TclError):
+            pass
+        self._styles()
+        self.protocol('WM_DELETE_WINDOW', self.close)
+        self._header()
+        footer=tk.Frame(self, bg=WHITE, highlightbackground=BORDER, highlightthickness=1)
+        footer.pack(side='bottom', fill='x')
+        tk.Label(footer, textvariable=self.status, bg=WHITE, fg=GRAY, font=('Segoe UI', 9), anchor='w').pack(side='left', padx=16, pady=8)
+        tk.Label(footer, text='Сорокин Дмитрий Денисович', bg=WHITE, fg=GRAY, font=('Segoe UI', 9)).pack(side='right', padx=16)
+        self.body=tk.Frame(self, bg=BG)
+        self.body.pack(fill='both', expand=True, padx=28, pady=22)
+        self.pages={}
+        for name in ('schedule', 'history', 'settings'):
+            self.pages[name]=tk.Frame(self.body, bg=WHITE, highlightbackground=BORDER, highlightthickness=1)
+        self._schedule()
+        self._history()
+        self._settings()
+        try:
+            self.cfg=settings.load()
+        except Exception:
+            self.status.set('Не удалось прочитать настройки. Откройте «Настройки».')
+        if self.cfg:
+            for key, var in self.vars.items():
+                var.set(self.cfg.get(key, ''))
+        self.update_destination()
+        self.show_stage(1)
+        self.show_page(initial_tab)
+        self.after(100, self.poll)
 
-  ttk.Label(self.main,text='СПИСОК ПУБЛИКАЦИИ',font=('Segoe UI',10,'bold'),foreground='#60656C').pack(anchor='w',pady=(8,0))
-  self.count=tk.StringVar(value='HTML-файлов для публикации: 0')
-  self.count_label=ttk.Label(self.main,textvariable=self.count)
-  self.count_label.pack(anchor='w',pady=6)
-  self.items=tk.Listbox(self.main,font=('Segoe UI',10),borderwidth=1,relief='solid',highlightthickness=0,selectbackground=RED,selectforeground='white',background=BG,activestyle='none')
-  list_frame=ttk.Frame(self.main)
-  list_frame.pack(fill='both',expand=True,pady=6)
-  self.items.pack(in_=list_frame,side='left',fill='both',expand=True)
-  scrollbar=ttk.Scrollbar(list_frame,orient='vertical',command=self.items.yview)
-  scrollbar.pack(side='right',fill='y')
-  self.items.configure(yscrollcommand=scrollbar.set)
-  self.items.bind('<Delete>',lambda event:self.remove_selected())
-  ttk.Button(list_frame,text='Убрать выбранное',command=self.remove_selected).pack(side='bottom',fill='x')
-  self.progress=ttk.Progressbar(self.main,mode='determinate',maximum=1)
-  self.progress.pack(fill='x',pady=6)
-  self.current=tk.StringVar(value='Готово к выбору файлов')
-  ttk.Label(self.main,textvariable=self.current,wraplength=650).pack(anchor='w',pady=5)
-  nav=ttk.Frame(self.main);nav.pack(fill='x',pady=8)
-  self.back_button=ttk.Button(nav,text='← Назад',command=self.go_back)
-  self.back_button.pack(side='left',padx=(0,8))
-  self.send_button=ttk.Button(nav,text='ДАЛЕЕ: ПРОВЕРИТЬ ФАЙЛЫ →',style='Primary.TButton',command=self.review)
-  self.send_button.pack(side='left',fill='x',expand=True)
-  self.selection_bar=bar
-  ttk.Label(self.main,text='Разработчик ПО: Сорокин Дмитрий Денисович',font=('Segoe UI',9),foreground='#697180').pack(side='bottom',anchor='e',pady=(4,0))
-  self.stage_num=1
-  self.show_stage(1)
-  self.progress_q=queue.Queue()
-  self.after(100,self.progress_poll)
- def show_stage(self,number):
-  self.stage_num=number
-  labels={1:'ШАГ 1 ИЗ 3  ·  ВЫБОР ФАЙЛОВ',2:'ШАГ 2 ИЗ 3  ·  ПРОВЕРКА ПЕРЕД ОТПРАВКОЙ',3:'ШАГ 3 ИЗ 3  ·  ПУБЛИКАЦИЯ'}
-  self.stage.set(labels[number])
-  for cell,lbl,picture,n in self.side_items:
-   active=(n==number)
-   color='#B5181B' if active else RED
-   cell.configure(bg=color)
-   lbl.configure(bg=color,font=('Segoe UI',10,'bold' if active else 'normal'))
-   picture.configure(bg=color)
-  for i,widget in enumerate(self.step_labels,1):
-   active=(i==number)
-   widget.configure(bg=RED if active else '#E5E4E4',fg='white' if active else INK)
-  if number==1:
-   self.selection_bar.pack(fill='x',pady=6,before=self.count_label)
-   self.back_button.state(['disabled'])
-   self.send_button.configure(text='ДАЛЕЕ: ПРОВЕРИТЬ ФАЙЛЫ →',command=self.review)
-   self.send_button.state(['!disabled'])
-   self.current.set('Выберите HTML-файлы, папку или ZIP-архив')
-  elif number==2:
-   self.selection_bar.pack_forget()
-   self.back_button.state(['!disabled'])
-   self.send_button.configure(text='ОПУБЛИКОВАТЬ НА САЙТЕ',command=self.publish)
-   self.send_button.state(['!disabled'])
-   self.current.set('Только HTML и HTM. Все файлы попадут прямо в выбранный каталог, без подпапок.')
-  else:
-   self.selection_bar.pack_forget()
-   self.back_button.state(['disabled'])
-   self.send_button.state(['disabled'])
- def go_back(self):
-  if self.busy:return
-  self.show_stage(1)
- def review(self):
-  if not self.entries:
-   messagebox.showinfo('Нет файлов','Сначала выберите HTML-файлы, папку или ZIP')
-   return
-  if not self.cfg:
-   messagebox.showerror('Не настроено','Попросите администратора настроить папку публикации')
-   return
-  self.show_stage(2)
- def refresh(self):
-  self.items.delete(0,'end')
-  for local,rel in self.entries:self.items.insert('end',rel)
-  self.count.set(f'HTML-файлов для публикации: {len(self.entries)}')
- def append(self,new):
-  known={rel.casefold() for _,rel in self.entries}
-  for local,rel in new:
-   if rel.casefold() in known:
-    messagebox.showerror('Повтор имени','Повторяется файл назначения: '+rel)
-    return
-   known.add(rel.casefold())
-  self.entries.extend(new)
-  self.refresh()
- def remove_selected(self):
-  if self.busy or self.stage_num!=1:return
-  selected=set(self.items.curselection())
-  self.entries=[entry for index,entry in enumerate(self.entries) if index not in selected]
-  self.refresh()
- def pick(self):
-  if self.busy:return
-  paths=filedialog.askopenfilenames(title='Выберите HTML-файлы',filetypes=[('HTML','*.html *.htm')])
-  self.append([(p,Path(p).name) for p in paths])
- def add_folder(self):
-  if self.busy:return
-  folder=filedialog.askdirectory(title='Выберите папку с расписанием')
-  if not folder:return
-  try:self.append(collect_folder(folder))
-  except Exception as e:messagebox.showerror('Папка',str(e))
- def add_zip(self):
-  if self.busy:return
-  filename=filedialog.askopenfilename(title='Выберите ZIP с HTML',filetypes=[('ZIP','*.zip')])
-  if not filename:return
-  try:
-   temp,files=collect_zip(filename)
-   self.temps.append(temp)
-   self.append(files)
-  except Exception as e:messagebox.showerror('ZIP',str(e))
- def progress_poll(self):
-  try:
-   while True:
-    kind,value=self.progress_q.get_nowait()
-    if kind=='current':
-     index,total,name=value
-     self.progress['maximum']=total
-     self.progress['value']=index-1
-     self.current.set(f'Готово {index} из {total} · Последний файл: {name}')
-    elif kind=='completed':
-     self.progress['value']=value
-  except queue.Empty:pass
-  self.after(100,self.progress_poll)
- def publish(self):
-  if self.busy:return
-  if not self.cfg:messagebox.showerror('Не настроено','Обратитесь к администратору');return
-  if not self.entries:messagebox.showinfo('Нет файлов','Сначала добавьте HTML-файлы');return
-  try:
-   validate_folder(self.cfg['folder'])
-   for p,rel in self.entries:
-    validate_name(Path(rel).name)
-    if not Path(p).is_file():raise UploadError('Файл не найден: '+rel)
-  except Exception as e:messagebox.showerror('Проверка',str(e));return
-  if not messagebox.askyesno('Подтверждение',f'Опубликовать {len(self.entries)} HTML-файлов непосредственно в {self.cfg["folder"]}, без подпапок?'):return
-  self.show_stage(3)
-  entries=list(self.entries);c=self.cfg.copy();self.progress_q=queue.Queue()
-  self.progress['value']=0
-  self.progress['maximum']=len(entries)
-  def job():
-   # A few parallel SFTP connections accelerate many small HTML files.
-   # Every file retains the transport's staged upload and backup behaviour.
-   results=[]
-   def send(entry):
-    local,rel=entry
-    try:return entry,TRANSPORT.publish(c,local,c['folder'])
-    except Exception as e:return entry,{'error':str(e)}
-   with ThreadPoolExecutor(max_workers=3) as pool:
-    futures={pool.submit(send,e):e for e in entries}
-    completed=0
-    for future in as_completed(futures):
-     entry,result=future.result()
-     completed+=1
-     results.append((entry,result))
-     self.progress_q.put(('current',(completed,len(entries),entry[1])))
-     self.progress_q.put(('completed',completed))
-   return results
-  def done(results):
-   succeeded={rel for (_,rel),r in results if r.get('status')=='published'}
-   self.entries=[e for e in self.entries if e[1] not in succeeded]
-   self.refresh()
-   self.show_stage(2 if self.entries else 1)
-   ok=len(succeeded);failed=len(results)-ok
-   self.current.set(f'Готово. Успешно: {ok}, ошибок: {failed}')
-   self.status.set(f'Опубликовано: {ok}. Осталось в списке: {len(self.entries)}')
-   errors=[f'{rel}: {r.get("error")}' for (_,rel),r in results if r.get('status')!='published']
-   if errors:
-    messagebox.showwarning('Итог публикации',f'Успешно: {ok}; ошибок: {failed}.\n'+'\n'.join(errors)[:1800])
-   else:messagebox.showinfo('Готово',f'Все {ok} HTML-файлов опубликованы.')
-  self.launch(job,done)
+    def _styles(self):
+        self.option_add('*Font', ('Segoe UI', 10))
+        s=ttk.Style(self)
+        s.theme_use('clam')
+        s.configure('TFrame', background=WHITE)
+        s.configure('TLabel', background=WHITE, foreground=INK)
+        s.configure('TButton', font=('Segoe UI', 10), padding=(14, 10), background=WHITE, foreground=INK, bordercolor=BORDER, focusthickness=2)
+        s.map('TButton', background=[('active', '#F0F1F3')])
+        s.configure('Primary.TButton', background=RED, foreground=WHITE, bordercolor=RED, font=('Segoe UI', 11, 'bold'))
+        s.map('Primary.TButton', background=[('disabled', '#BBBBBB'), ('active', '#C7191C')], foreground=[('disabled', WHITE)])
+        s.configure('Import.TButton', padding=(10, 19), font=('Segoe UI', 11, 'bold'))
+        s.configure('TEntry', padding=7, fieldbackground=WHITE, bordercolor=BORDER)
+        s.configure('Treeview', background=WHITE, fieldbackground=WHITE, foreground=INK, rowheight=32, bordercolor=BORDER, font=('Segoe UI', 10))
+        s.configure('Treeview.Heading', background='#F1F2F4', foreground=GRAY, font=('Segoe UI', 10), padding=(8, 9))
+        s.map('Treeview', background=[('selected', '#FCE5E5')], foreground=[('selected', INK)])
+        s.configure('Horizontal.TProgressbar', background=RED, troughcolor='#ECEDEF', borderwidth=0, thickness=8)
+
+    def _header(self):
+        header=tk.Frame(self, bg=WHITE, height=84, highlightbackground=BORDER, highlightthickness=1)
+        header.pack(fill='x')
+        self.logo=None
+        try:
+            raw=tk.PhotoImage(file=str(ROOT/'assets'/'rktm-logo.png'))
+            self.logo=raw.subsample(max(1, (raw.height()+51)//52))
+            tk.Label(header, image=self.logo, bg=WHITE).pack(side='left', padx=(22, 12), pady=12)
+        except (OSError, tk.TclError):
+            tk.Label(header, text='РКТМ', fg=RED, bg=WHITE, font=('Segoe UI', 19, 'bold')).pack(side='left', padx=22, pady=20)
+        tk.Label(header, text='РКТМ — Расписание', bg=WHITE, fg=INK, font=('Segoe UI', 15, 'bold')).pack(side='left', padx=(0, 20))
+        self.tabs={}
+        for key, title in (('schedule', 'Расписание'), ('history', 'История'), ('settings', 'Настройки')):
+            cell=tk.Frame(header, bg=WHITE)
+            cell.pack(side='left', fill='y', padx=8)
+            b=tk.Button(cell, text=title, command=lambda n=key:self.show_page(n), bg=WHITE, fg=INK, activebackground=WHITE, activeforeground=RED, bd=0, relief='flat', font=('Segoe UI', 11), padx=10, pady=20, cursor='hand2', takefocus=True)
+            b.pack(fill='both', expand=True)
+            line=tk.Frame(cell, bg=WHITE, height=3)
+            line.pack(fill='x')
+            self.tabs[key]=(b, line)
+
+    def show_page(self, name):
+        if self.busy:
+            return
+        for key, frame in self.pages.items():
+            frame.pack_forget()
+            self.tabs[key][1].configure(bg=RED if key==name else WHITE)
+            self.tabs[key][0].configure(fg=INK if key==name else GRAY)
+        self.pages[name].pack(fill='both', expand=True)
+        self.current_page=name
+        if name=='history':
+            self.refresh_history()
+
+    def title_block(self, page, title, subtitle):
+        tk.Label(page, text=title, bg=WHITE, fg=INK, font=('Segoe UI', 22, 'bold'), anchor='w').pack(fill='x', padx=24, pady=(20, 3))
+        tk.Label(page, text=subtitle, bg=WHITE, fg=GRAY, anchor='w').pack(fill='x', padx=24, pady=(0, 16))
+
+    def table(self, parent, columns, widths):
+        frame=ttk.Frame(parent)
+        frame.pack(fill='both', expand=True)
+        tree=ttk.Treeview(frame, columns=columns, show='headings', selectmode='extended', height=5)
+        for name, width in zip(columns, widths):
+            tree.heading(name, text=name)
+            tree.column(name, width=width, minwidth=65, anchor='w')
+        sb=ttk.Scrollbar(frame, orient='vertical', command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        tree.pack(side='left', fill='both', expand=True)
+        sb.pack(side='right', fill='y')
+        return tree
+
+    def _schedule(self):
+        page=self.pages['schedule']
+        self.title_block(page, 'Публикация расписания', 'Выберите файлы, проверьте и отправьте на сайт')
+        steps=tk.Frame(page, bg=WHITE)
+        steps.pack(fill='x', padx=24, pady=(0, 16))
+        self.step_widgets=[]
+        for i, title in enumerate(('Выбор файлов', 'Проверка', 'Публикация'), 1):
+            circle=tk.Label(steps, text=str(i), bg='#E5E4E4', fg=INK, font=('Segoe UI', 12, 'bold'), width=3, pady=5)
+            circle.pack(side='left')
+            label=tk.Label(steps, text=title, bg=WHITE, fg=GRAY, padx=9)
+            label.pack(side='left')
+            self.step_widgets.append((circle, label))
+            if i<3:
+                tk.Frame(steps, bg=BORDER, height=1).pack(side='left', fill='x', expand=True, padx=(4, 14))
+        self.import_bar=tk.Frame(page, bg=WHITE)
+        self.import_bar.pack(fill='x', padx=24, pady=(0, 14))
+        self.import_buttons=[]
+        for col, (title, glyph, fn) in enumerate((('ZIP-архив', 'zip', self.add_zip), ('Папка', 'folder', self.add_folder), ('HTML-файлы', 'html', self.pick))):
+            self.import_bar.columnconfigure(col, weight=1, uniform='import')
+            box=tk.Frame(self.import_bar, bg=WHITE, highlightbackground=BORDER, highlightthickness=1)
+            box.grid(row=0, column=col, sticky='ew', padx=(0 if col==0 else 6, 0 if col==2 else 6))
+            icon(box, glyph, 30).pack(side='left', padx=(18, 6), pady=15)
+            b=ttk.Button(box, text=title, command=fn, style='Import.TButton')
+            b.pack(side='left', fill='both', expand=True)
+            self.import_buttons.append(b)
+        container=tk.Frame(page, bg=WHITE)
+        container.pack(fill='both', expand=True, padx=24)
+        self.items=self.table(container, ('Файл', 'Размер', 'Состояние'), (420, 110, 210))
+        self.items.bind('<Delete>', lambda e:self.remove_selected())
+        self.count=tk.StringVar(value='Выбрано файлов: 0')
+        tk.Label(page, textvariable=self.count, bg=WHITE, fg=GRAY, anchor='w').pack(fill='x', padx=24, pady=(9, 3))
+        self.progress=ttk.Progressbar(page, maximum=1)
+        self.progress.pack(fill='x', padx=24, pady=(3, 5))
+        self.current=tk.StringVar(value='Добавьте файлы расписания')
+        tk.Label(page, textvariable=self.current, bg=WHITE, fg=GRAY, anchor='w').pack(fill='x', padx=24, pady=(0, 5))
+        bottom=tk.Frame(page, bg=WHITE)
+        bottom.pack(fill='x', padx=24, pady=(5, 18))
+        self.remove_button=ttk.Button(bottom, text='Убрать выбранное', command=self.remove_selected)
+        self.remove_button.pack(side='left')
+        self.back_button=ttk.Button(bottom, text='Назад', command=lambda:self.show_stage(1))
+        self.back_button.pack(side='left', padx=8)
+        self.send_button=ttk.Button(bottom, text='Проверить файлы →', command=self.review, style='Primary.TButton')
+        self.send_button.pack(side='right')
+        self.destination=tk.StringVar()
+        self.destination_label=tk.Label(page, textvariable=self.destination, bg=WHITE, fg=GRAY, anchor='w', wraplength=850)
+        self.destination_label.pack(fill='x', padx=24, pady=(0, 12))
+
+    def update_destination(self):
+        folder=self.cfg.get('folder', '') if self.cfg else ''
+        self.destination.set('Папка публикации: '+folder if folder else 'Подключение не настроено — откройте «Настройки»')
+
+    def refresh(self):
+        self.items.delete(*self.items.get_children())
+        for i, (local, rel) in enumerate(self.entries):
+            try:
+                size='{:,} КБ'.format(max(1, (Path(local).stat().st_size+1023)//1024)).replace(',', ' ')
+            except OSError:
+                size='—'
+            self.items.insert('', 'end', iid=str(i), values=(rel, size, 'Проверен' if self.stage_num==2 else 'Выбран'))
+        self.count.set('Выбрано файлов: '+str(len(self.entries)))
+
+    def show_stage(self, number):
+        if self.busy:
+            return
+        self.stage_num=number
+        for i, (circle, label) in enumerate(self.step_widgets, 1):
+            circle.configure(bg=YELLOW if i==number else '#E5E4E4')
+            label.configure(fg=INK if i==number else GRAY, font=('Segoe UI', 10, 'bold' if i==number else 'normal'))
+        for b in self.import_buttons:
+            b.state(['!disabled'] if number==1 else ['disabled'])
+        self.remove_button.state(['!disabled'] if number==1 else ['disabled'])
+        self.back_button.state(['!disabled'] if number==2 else ['disabled'])
+        self.send_button.configure(text='Опубликовать на сайте' if number==2 else 'Проверить файлы →', command=self.publish if number==2 else self.review)
+        self.send_button.state(['disabled'] if number==3 else ['!disabled'])
+        self.refresh()
+        self.current.set({1:'Добавьте файлы расписания', 2:'Проверка пройдена. Файлы будут опубликованы без подпапок.', 3:'Публикация выполняется. Дождитесь завершения.'}[number])
+
+    def append(self, new):
+        if self.busy or self.stage_num!=1:
+            return
+        known={rel.casefold() for _, rel in self.entries}
+        for local, rel in new:
+            validate_name(rel)
+            if rel.casefold() in known:
+                raise UploadError('Повторяется имя назначения: '+rel)
+            known.add(rel.casefold())
+        self.entries.extend(new)
+        self.refresh()
+
+    def remove_selected(self):
+        if self.busy or self.stage_num!=1:
+            return
+        selected=set(self.items.selection())
+        self.entries=[e for i, e in enumerate(self.entries) if str(i) not in selected]
+        self.refresh()
+
+    def pick(self):
+        if self.busy or self.stage_num!=1:return
+        files=filedialog.askopenfilenames(title='Выберите HTML-файлы', filetypes=[('HTML', '*.html *.htm')])
+        try:self.append([(p, Path(p).name) for p in files])
+        except Exception as e:messagebox.showerror('Выбор файлов', str(e))
+
+    def add_folder(self):
+        if self.busy or self.stage_num!=1:return
+        folder=filedialog.askdirectory(title='Выберите папку с расписанием')
+        if not folder:return
+        try:self.append(collect_folder(folder))
+        except Exception as e:messagebox.showerror('Выбор папки', str(e))
+
+    def add_zip(self):
+        if self.busy or self.stage_num!=1:return
+        filename=filedialog.askopenfilename(title='Выберите ZIP с расписанием', filetypes=[('ZIP', '*.zip')])
+        if not filename:return
+        temp=None
+        try:
+            temp, files=collect_zip(filename)
+            self.append(files)
+            self.temps.append(temp)
+        except Exception as e:
+            if temp:temp.cleanup()
+            messagebox.showerror('Выбор ZIP', str(e))
+
+    def validate_entries(self):
+        if not self.entries:raise UploadError('Сначала выберите HTML-файлы, папку или ZIP-архив.')
+        if not self.cfg:raise UploadError('Сначала сохраните подключение в разделе «Настройки».')
+        validate_connection(self.cfg)
+        validate_folder(self.cfg['folder'])
+        for local, rel in self.entries:
+            validate_name(rel)
+            if not Path(local).is_file():raise UploadError('Файл не найден: '+rel)
+
+    def review(self):
+        if self.busy:return
+        try:self.validate_entries()
+        except Exception as e:
+            messagebox.showerror('Проверка файлов', str(e));return
+        self.show_stage(2)
+
+    def publish(self):
+        if self.busy or self.stage_num!=2:return
+        try:self.validate_entries()
+        except Exception as e:
+            messagebox.showerror('Проверка файлов', str(e));return
+        if not messagebox.askyesno('Публикация', 'Отправить {} файлов в {}?\nСуществующие файлы будут заменены с резервной копией.'.format(len(self.entries), self.cfg['folder'])):return
+        self.show_stage(3)
+        entries=list(self.entries)
+        cfg=self.cfg.copy()
+        self.progress['value']=0
+        self.progress['maximum']=len(entries)
+        def job():
+            def send(entry):
+                try:return entry, TRANSPORT.publish(cfg, entry[0], cfg['folder'])
+                except Exception as e:return entry, {'error':str(e)}
+            results=[]
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                futures=[pool.submit(send, e) for e in entries]
+                for future in as_completed(futures):
+                    item=future.result()
+                    results.append(item)
+                    self.progress_q.put((len(results), len(entries), item[0][1]))
+            return results
+        def done(results):
+            succeeded={rel for (_, rel), r in results if r.get('status')=='published'}
+            self.entries=[e for e in self.entries if e[1] not in succeeded]
+            receipt_error=False
+            try:history.record(len(results), len(succeeded))
+            except Exception:receipt_error=True
+            self.show_stage(2 if self.entries else 1)
+            self.current.set('Опубликовано: {}. Ошибок: {}.'.format(len(succeeded), len(results)-len(succeeded)))
+            self.status.set(self.current.get()+(' Журнал не сохранён.' if receipt_error else ''))
+            errors=['{}: {}'.format(e[1], r.get('error', 'Не подтверждено')) for e, r in results if r.get('status')!='published']
+            if errors:messagebox.showwarning('Результат публикации', '\n'.join(errors)[:1800])
+            else:
+                for temp in self.temps:temp.cleanup()
+                self.temps.clear()
+                messagebox.showinfo('Готово', 'Все {} файлов опубликованы.'.format(len(succeeded)))
+        self.launch(job, done)
+
+    def _history(self):
+        page=self.pages['history']
+        self.title_block(page, 'История публикаций', 'Результаты загрузок с этого компьютера')
+        table=tk.Frame(page, bg=WHITE)
+        table.pack(fill='both', expand=True, padx=24, pady=(0, 16))
+        self.history_items=self.table(table, ('Дата', 'Файлов', 'Результат'), (250, 110, 420))
+        self.history_items.tag_configure('ok', foreground='#207743')
+        bottom=ttk.Frame(page)
+        bottom.pack(fill='x', padx=24, pady=(0, 20))
+        ttk.Button(bottom, text='Обновить', command=self.refresh_history).pack(side='left')
+        ttk.Button(bottom, text='Сохранить журнал…', command=self.export_history).pack(side='left', padx=10)
+        self.history_note=tk.StringVar(value='')
+        ttk.Label(bottom, textvariable=self.history_note).pack(side='right')
+
+    def refresh_history(self):
+        self.history_items.delete(*self.history_items.get_children())
+        try:
+            rows=history.recent()
+            for date, total, ok in rows:
+                from datetime import datetime
+                stamp=datetime.fromisoformat(date).strftime('%d.%m.%Y, %H:%M')
+                result='Опубликовано' if total==ok else 'Успешно: {}, ошибок: {}'.format(ok, total-ok)
+                self.history_items.insert('', 'end', values=(stamp, total, result), tags=('ok',) if total==ok else ())
+            self.history_note.set('Записей: '+str(len(rows)) if rows else 'Публикаций пока нет')
+        except Exception:
+            self.history_note.set('Не удалось открыть журнал')
+
+    def export_history(self):
+        filename=filedialog.asksaveasfilename(title='Сохранить журнал', defaultextension='.txt', filetypes=[('Текст', '*.txt')])
+        if not filename:return
+        try:
+            rows=history.recent()
+            text='РКТМ — История публикаций\n\n'+'\n'.join('{} | Файлов: {} | Успешно: {}'.format(*r) for r in rows)
+            Path(filename).write_text(text, encoding='utf-8-sig')
+        except Exception as e:messagebox.showerror('Журнал', str(e))
+
+    def _settings(self):
+        page=self.pages['settings']
+        self.title_block(page, 'Настройки подключения', 'Настраивается один раз администратором')
+        form=ttk.Frame(page)
+        form.pack(fill='x', padx=24)
+        form.columnconfigure(1, weight=1)
+        self.vars={}
+        for row, (key, label, default) in enumerate((('host', 'SFTP-сервер', ''), ('port', 'Порт', '22'), ('user', 'Пользователь', ''), ('password', 'Пароль', ''), ('hostkey', 'Отпечаток ключа сервера', ''), ('folder', 'Папка публикации', '/'))):
+            ttk.Label(form, text=label).grid(row=row, column=0, sticky='w', padx=(0, 20), pady=7)
+            var=tk.StringVar(value=default)
+            self.vars[key]=var
+            ttk.Entry(form, textvariable=var, show='•' if key=='password' else '').grid(row=row, column=1, sticky='ew', pady=7)
+        ttk.Label(page, text='Отпечаток SSH: ssh-ed25519 256 SHA256:… (не путь к файлу ключа)', foreground=GRAY).pack(anchor='w', padx=24, pady=(8, 14))
+        actions=ttk.Frame(page)
+        actions.pack(fill='x', padx=24, pady=10)
+        self.connect_button=ttk.Button(actions, text='Проверить связь', command=self.connect)
+        self.connect_button.pack(side='left')
+        self.browse_button=ttk.Button(actions, text='Выбрать папку на сервере', command=self.browse)
+        self.browse_button.pack(side='left', padx=10)
+        self.save_button=ttk.Button(actions, text='Сохранить', command=self.save, style='Primary.TButton')
+        self.save_button.pack(side='right')
+        ttk.Label(page, text='Пароль защищён средствами Windows и доступен текущему пользователю.', foreground=GRAY).pack(anchor='w', padx=24, pady=14)
+
+    def config(self):return {k:v.get().strip() if k!='password' else v.get() for k, v in self.vars.items()}
+
+    def checked_config(self):
+        c=self.config()
+        validate_connection(c)
+        c['folder']=validate_folder(c['folder'])
+        return c
+
+    def save(self):
+        if self.busy:return
+        try:
+            c=self.checked_config()
+            settings.save(c)
+            self.cfg=c
+            self.update_destination()
+            if self.stage_num==2:self.show_stage(1)
+            self.status.set('Настройки сохранены')
+            messagebox.showinfo('Готово', 'Подключение сохранено. Можно загружать расписание.')
+        except Exception as e:messagebox.showerror('Настройки', str(e))
+
+    def connect(self):
+        if self.busy:return
+        try:c=self.checked_config()
+        except Exception as e:messagebox.showerror('Подключение', str(e));return
+        self.launch(lambda:TRANSPORT.list_dir(c, c['folder']), lambda names:self.status.set('Подключение успешно. Подпапок: '+str(len(names))))
+
+    def browse(self):
+        if self.busy:return
+        try:c=self.checked_config()
+        except Exception as e:messagebox.showerror('Папка на сервере', str(e));return
+        win=tk.Toplevel(self)
+        win.title('Выбор папки публикации')
+        win.geometry('620x440')
+        win.configure(bg=WHITE)
+        win.transient(self)
+        win.grab_set()
+        path=tk.StringVar(value=c['folder'])
+        ttk.Label(win, textvariable=path, wraplength=570).pack(fill='x', padx=20, pady=15)
+        folders=tk.Listbox(win, font=('Segoe UI', 11), activestyle='none')
+        folders.pack(fill='both', expand=True, padx=20)
+        def show(names):
+            if not win.winfo_exists():return
+            folders.delete(0, 'end')
+            for name in names:folders.insert('end', name)
+        def load():
+            if self.busy:return
+            location=path.get()
+            self.launch(lambda:TRANSPORT.list_dir(c, location), show)
+        def enter(event=None):
+            if self.busy or not folders.curselection():return
+            path.set(path.get().rstrip('/')+'/'+folders.get(folders.curselection()[0]))
+            load()
+        def up():
+            if self.busy:return
+            path.set(path.get().rstrip('/').rsplit('/', 1)[0] or '/')
+            load()
+        def choose():
+            if self.busy:return
+            self.vars['folder'].set(path.get())
+            win.destroy()
+        def close():
+            if not self.busy:win.destroy()
+        win.protocol('WM_DELETE_WINDOW', close)
+        folders.bind('<Double-1>', enter)
+        bar=ttk.Frame(win)
+        bar.pack(fill='x', padx=20, pady=14)
+        ttk.Button(bar, text='На уровень выше', command=up).pack(side='left')
+        ttk.Button(bar, text='Выбрать эту папку', command=choose, style='Primary.TButton').pack(side='right')
+        load()
+
+    def launch(self, job, done):
+        if self.busy:return
+        self.busy=True
+        self.status.set('Выполняется операция…')
+        def task():
+            try:self.q.put((done, job(), None))
+            except Exception as e:self.q.put((done, None, str(e)))
+        threading.Thread(target=task, daemon=True).start()
+
+    def poll(self):
+        try:
+            while True:
+                count, total, name=self.progress_q.get_nowait()
+                self.progress['value']=count
+                self.current.set('Обработано {} из {} · {}'.format(count, total, name))
+        except queue.Empty:pass
+        try:
+            while True:
+                done, result, error=self.q.get_nowait()
+                self.busy=False
+                if error:
+                    self.status.set('Операция не завершена')
+                    if self.stage_num==3:self.show_stage(2)
+                    messagebox.showerror('Ошибка', error[:1600])
+                else:
+                    self.status.set('Операция выполнена')
+                    done(result)
+        except queue.Empty:pass
+        self.after(100, self.poll)
+
+    def close(self):
+        if self.busy:
+            messagebox.showinfo('Выполняется операция', 'Дождитесь завершения перед закрытием программы.')
+            return
+        for temp in self.temps:temp.cleanup()
+        self.destroy()
+
+
+# Backwards-compatible entry points for existing shortcuts and imports.
+class Upload(App):
+    pass
+
+
+class Admin(App):
+    def __init__(self):super().__init__('settings')
+
 
 if __name__=='__main__':
- (Admin if '--admin' in sys.argv else Upload)().mainloop()
+    App('settings' if '--admin' in sys.argv else 'schedule').mainloop()
