@@ -11,7 +11,7 @@ with tempfile.TemporaryDirectory() as temp:
     settings.APP=Path(temp)
     settings.CFG=Path(temp)/'config.json'
     app=App()
-    app.geometry('1080x760+0+0')
+    app.geometry('{}x{}+0+0'.format(min(1080, app.winfo_screenwidth()-40), min(760, app.winfo_screenheight()-100)))
     output=Path('previews')
     output.mkdir(exist_ok=True)
     # Demonstration rows are local QA fixtures, never uploaded.
