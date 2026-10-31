@@ -13,7 +13,7 @@ TRANSPORT=WinscpTransport(ROOT/'WinSCP'/'WinSCP.com')
 PANEL='#F4F4F4'
 class Base(tk.Tk):
  def __init__(self,title):
-  super().__init__();self.title(title);self.geometry('900x700');self.minsize(730,560);self.configure(bg=BG)
+  super().__init__();self.title(title);self.geometry('980x700');self.minsize(820,560);self.configure(bg=BG)
   self.q=queue.Queue();self.busy=False
   try:self.iconbitmap(str(ROOT/'assets'/('admin.ico' if 'Администратор' in title else 'upload.ico')))
   except (OSError,tk.TclError):pass
@@ -85,6 +85,32 @@ class Admin(Base):
 class Upload(Base):
  def __init__(self):
   super().__init__('РКТМ — Загрузка расписания')
+  # Brandbook desktop layout: restrained red navigation, white content area.
+  shell=self.main
+  sidebar=tk.Frame(shell,bg=RED,width=173)
+  sidebar.pack(side='left',fill='y',padx=(0,16))
+  sidebar.pack_propagate(False)
+  tk.Label(sidebar,text='РКТМ',bg=RED,fg='white',font=('Segoe UI',23,'bold'),anchor='w').pack(fill='x',padx=17,pady=(24,4))
+  tk.Label(sidebar,text='ЗАГРУЗЧИК\nРАСПИСАНИЙ',bg=RED,fg='white',font=('Segoe UI',9,'bold'),anchor='w',justify='left').pack(fill='x',padx=18,pady=(0,30))
+  self.side_items=[]
+  for name,glyph,number in (('Выбор файлов','folder',1),('Проверка','check',2),('Публикация','upload',3)):
+   cell=tk.Frame(sidebar,bg=RED,cursor='hand2')
+   cell.pack(fill='x',pady=2)
+   picture=icon(cell,glyph,20,'white',RED);picture.pack(side='left',padx=(17,8),pady=11)
+   lbl=tk.Label(cell,text=name,bg=RED,fg='white',font=('Segoe UI',10),cursor='hand2',anchor='w')
+   lbl.pack(side='left',fill='x',expand=True)
+   self.side_items.append((cell,lbl,picture,number))
+   def navigate(n=number):
+    if self.busy:return
+    if n==1:self.show_stage(1)
+    elif n==2:self.review()
+    else:
+     if self.stage_num==2:self.publish()
+     else:self.review()
+   for elem in (cell,lbl,picture):elem.bind('<Button-1>',lambda e,f=navigate:f())
+  tk.Label(sidebar,text='© Сорокин Д. Д.',bg=RED,fg='white',font=('Segoe UI',8)).pack(side='bottom',pady=16)
+  self.main=ttk.Frame(shell,padding=(0,8,8,4))
+  self.main.pack(side='left',fill='both',expand=True)
   brand=ttk.Frame(self.main);brand.pack(fill='x',pady=(2,14))
   # Prefer the college's official logo when provided in assets; keep Win7-compatible PNG.
   self.brand_logo=None
@@ -145,6 +171,12 @@ class Upload(Base):
   self.stage_num=number
   labels={1:'ШАГ 1 ИЗ 3  ·  ВЫБОР ФАЙЛОВ',2:'ШАГ 2 ИЗ 3  ·  ПРОВЕРКА ПЕРЕД ОТПРАВКОЙ',3:'ШАГ 3 ИЗ 3  ·  ПУБЛИКАЦИЯ'}
   self.stage.set(labels[number])
+  for cell,lbl,picture,n in self.side_items:
+   active=(n==number)
+   color='#B5181B' if active else RED
+   cell.configure(bg=color)
+   lbl.configure(bg=color,font=('Segoe UI',10,'bold' if active else 'normal'))
+   picture.configure(bg=color)
   for i,widget in enumerate(self.step_labels,1):
    active=(i==number)
    widget.configure(bg=RED if active else '#E5E4E4',fg='white' if active else INK)
