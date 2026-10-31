@@ -6,10 +6,11 @@ from tkinter import ttk,filedialog,messagebox
 from core import WinscpTransport,UploadError,validate_folder,validate_connection,validate_name
 from selection import collect_folder,collect_zip,destination
 import settings
+from brand_widgets import icon,action_button,RED,YELLOW,INK,BG
 
 ROOT=(Path(getattr(sys,'_MEIPASS')) if getattr(sys,'frozen',False) else Path(__file__).resolve().parent.parent)
 TRANSPORT=WinscpTransport(ROOT/'WinSCP'/'WinSCP.com')
-RED='#b42332'; BG='#f6f7f9'
+PANEL='#F4F4F4'
 class Base(tk.Tk):
  def __init__(self,title):
   super().__init__();self.title(title);self.geometry('900x700');self.minsize(730,560);self.configure(bg=BG)
@@ -19,7 +20,7 @@ class Base(tk.Tk):
   self.protocol('WM_DELETE_WINDOW',self.destroy)
   self.after(100,self.poll)
   self.main=ttk.Frame(self,padding=20);self.main.pack(fill='both',expand=True)
-  style=ttk.Style();style.theme_use('clam');style.configure('TFrame',background='#f6f7f9');style.configure('TLabel',background='#f6f7f9',foreground='#202633',font=('Segoe UI',10));style.configure('TButton',font=('Segoe UI',11),padding=(13,11));style.map('TButton',background=[('active','#e8e9ed')]);style.configure('TEntry',font=('Segoe UI',11),padding=6);style.configure('Heading.TLabel',font=('Segoe UI',20,'bold'),foreground='#a71f30');style.configure('Primary.TButton',font=('Segoe UI',12,'bold'),padding=(14,15),foreground='white',background='#b42332');style.map('Primary.TButton',background=[('active','#931d29'),('disabled','#aab0b6')]);style.configure('Horizontal.TProgressbar',background='#b42332',troughcolor='#e3e5e9',thickness=14)
+  style=ttk.Style();style.theme_use('clam');style.configure('TFrame',background=BG);style.configure('TLabel',background=BG,foreground=INK,font=('Segoe UI',10));style.configure('TButton',font=('Segoe UI',11),padding=(13,11));style.map('TButton',background=[('active','#e8e9ed')]);style.configure('TEntry',font=('Segoe UI',11),padding=6);style.configure('Heading.TLabel',font=('Segoe UI',20,'bold'),foreground=INK);style.configure('Primary.TButton',font=('Segoe UI',12,'bold'),padding=(14,15),foreground='white',background=RED);style.map('Primary.TButton',background=[('active','#BD171A'),('disabled','#aab0b6')]);style.configure('Horizontal.TProgressbar',background=RED,troughcolor='#E5E4E4',thickness=14)
   self.status=tk.StringVar(value='Готово')
   ttk.Label(self,textvariable=self.status,background=BG,wraplength=650).pack(fill='x',padx=20,pady=8)
  def launch(self,job,done):
@@ -106,7 +107,7 @@ class Upload(Base):
   self.step_labels=[]
   for i,label in enumerate(('01  Выбор файлов','02  Проверка','03  Публикация'),1):
    cell=ttk.Frame(self.steps_frame);cell.pack(side='left',fill='x',expand=True,padx=3)
-   widget=tk.Label(cell,text=label,font=('Segoe UI',10,'bold'),padx=8,pady=12,bd=0)
+   widget=tk.Label(cell,text=label,font=('Segoe UI',10,'bold'),padx=8,pady=10,bd=0)
    widget.pack(fill='x')
    self.step_labels.append(widget)
   try:self.cfg=settings.load()
@@ -115,15 +116,15 @@ class Upload(Base):
   self.entries=[];self.temps=[]
   self.stage=tk.StringVar(value='ШАГ 1 ИЗ 3  ·  ВЫБОР ФАЙЛОВ')
   ttk.Label(self.main,textvariable=self.stage,font=('Segoe UI',11,'bold'),foreground='#a71f30').pack(anchor='w',pady=(0,5))
-  bar=ttk.Frame(self.main);bar.pack(fill='x',pady=6)
-  ttk.Button(bar,text='Выбрать HTML',command=self.pick).pack(side='left',expand=True,fill='x',padx=3)
-  ttk.Button(bar,text='Выбрать папку',command=self.add_folder).pack(side='left',expand=True,fill='x',padx=3)
-  ttk.Button(bar,text='Открыть ZIP-архив',command=self.add_zip).pack(side='left',expand=True,fill='x',padx=3)
-  ttk.Label(self.main,text='СПИСОК ПУБЛИКАЦИИ',font=('Segoe UI',10,'bold'),foreground='#697180').pack(anchor='w',pady=(8,0))
+  bar=tk.Frame(self.main,bg=BG);bar.pack(fill='x',pady=6)
+  for label,glyph,callback in (('ZIP-архив','zip',self.add_zip),('Папка','folder',self.add_folder),('HTML-файлы','html',self.pick)):
+   action_button(bar,label,glyph,callback).pack(side='left',padx=(0,8))
+
+  ttk.Label(self.main,text='СПИСОК ПУБЛИКАЦИИ',font=('Segoe UI',10,'bold'),foreground='#60656C').pack(anchor='w',pady=(8,0))
   self.count=tk.StringVar(value='HTML-файлов для публикации: 0')
   self.count_label=ttk.Label(self.main,textvariable=self.count)
   self.count_label.pack(anchor='w',pady=6)
-  self.items=tk.Listbox(self.main,font=('Segoe UI',11),borderwidth=1,relief='solid',highlightthickness=0,selectbackground='#b42332',selectforeground='white')
+  self.items=tk.Listbox(self.main,font=('Segoe UI',10),borderwidth=1,relief='solid',highlightthickness=0,selectbackground=RED,selectforeground='white',background=BG,activestyle='none')
   self.items.pack(fill='both',expand=True,pady=6)
   self.progress=ttk.Progressbar(self.main,mode='determinate',maximum=1)
   self.progress.pack(fill='x',pady=6)
@@ -146,7 +147,7 @@ class Upload(Base):
   self.stage.set(labels[number])
   for i,widget in enumerate(self.step_labels,1):
    active=(i==number)
-   widget.configure(bg=RED if active else '#e9ebef',fg='white' if active else '#566070')
+   widget.configure(bg=RED if active else '#E5E4E4',fg='white' if active else INK)
   if number==1:
    self.selection_bar.pack(fill='x',pady=6,before=self.count_label)
    self.back_button.state(['disabled'])
