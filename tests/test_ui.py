@@ -64,3 +64,12 @@ def test_dpapi_roundtrip_on_current_architecture(tmp_path, monkeypatch):
     settings.save(c)
     assert settings.load()==c
     assert c['password'] not in settings.CFG.read_text(encoding='utf-8')
+
+
+def test_publish_action_visible_on_small_display(app):
+    app.geometry('960x640')
+    app.update()
+    b=app.send_button
+    assert b.winfo_ismapped()
+    assert b.winfo_rooty()+b.winfo_height() < app.winfo_rooty()+app.winfo_height()-25
+    assert app.items.winfo_height()>=30

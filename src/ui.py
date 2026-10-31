@@ -25,8 +25,8 @@ class App(tk.Tk):
     def __init__(self, initial_tab='schedule'):
         super().__init__()
         self.title('РКТМ — Расписание')
-        self.geometry('1080x760')
-        self.minsize(900, 700)
+        self.geometry('{}x{}'.format(min(1080, self.winfo_screenwidth()-40), min(760, self.winfo_screenheight()-100)))
+        self.minsize(900, 620)
         self.configure(bg=BG)
         self.busy=False
         self.entries=[]
@@ -180,6 +180,16 @@ class App(tk.Tk):
         self.destination=tk.StringVar()
         self.destination_label=tk.Label(page, textvariable=self.destination, bg=WHITE, fg=GRAY, anchor='w', wraplength=850)
         self.destination_label.pack(fill='x', padx=24, pady=(0, 12))
+        # Reserve the action area before the expanding table, even on 768px displays.
+        widgets=page.pack_slaves()
+        options={w:w.pack_info() for w in widgets}
+        for w in widgets:w.pack_forget()
+        for w in (self.destination_label, bottom, widgets[-3], self.progress, widgets[-5]):
+            opts=dict(options[w]);opts.pop('in', None);opts['side']='bottom'
+            w.pack(**opts)
+        for w in widgets[:4]:
+            opts=dict(options[w]);opts.pop('in', None);w.pack(**opts)
+        opts=dict(options[container]);opts.pop('in', None);container.pack(**opts)
 
     def update_destination(self):
         folder=self.cfg.get('folder', '') if self.cfg else ''
@@ -418,6 +428,7 @@ class App(tk.Tk):
         def load():
             if self.busy:return
             location=path.get()
+            folders.delete(0, 'end')
             self.launch(lambda:TRANSPORT.list_dir(c, location), show)
         def enter(event=None):
             if self.busy or not folders.curselection():return
