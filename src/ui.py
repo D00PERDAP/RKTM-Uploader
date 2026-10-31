@@ -42,6 +42,7 @@ class App(tk.Tk):
             pass
         self._styles()
         self.protocol('WM_DELETE_WINDOW', self.close)
+        tk.Frame(self, bg=RED, height=4).pack(fill='x')
         self._header()
         footer=tk.Frame(self, bg=WHITE, highlightbackground=BORDER, highlightthickness=1)
         footer.pack(side='bottom', fill='x')
@@ -78,6 +79,9 @@ class App(tk.Tk):
         s.configure('Primary.TButton', background=RED, foreground=WHITE, bordercolor=RED, font=('Segoe UI', 11, 'bold'))
         s.map('Primary.TButton', background=[('disabled', '#BBBBBB'), ('active', '#C7191C')], foreground=[('disabled', WHITE)])
         s.configure('Import.TButton', padding=(10, 12), font=('Segoe UI', 11, 'bold'), borderwidth=0, relief='flat')
+        for name, color, hover in (('ImportRed.TButton', '#FFF1F1', '#FFE0E0'), ('ImportGold.TButton', '#FFF8DF', '#FFECB2')):
+            s.configure(name, padding=(10, 12), font=('Segoe UI', 11, 'bold'), borderwidth=0, relief='flat', background=color)
+            s.map(name, background=[('active', hover), ('disabled', '#F4F4F4')])
         s.configure('TEntry', padding=7, fieldbackground=WHITE, bordercolor=BORDER)
         s.configure('Treeview', background=WHITE, fieldbackground=WHITE, foreground=INK, rowheight=28, bordercolor=BORDER, font=('Segoe UI', 10))
         s.configure('Treeview.Heading', background='#F1F2F4', foreground=GRAY, font=('Segoe UI', 10), padding=(8, 6), relief='flat', borderwidth=1, lightcolor=BORDER, darkcolor=BORDER)
@@ -111,14 +115,14 @@ class App(tk.Tk):
         for key, frame in self.pages.items():
             frame.pack_forget()
             self.tabs[key][1].configure(bg=RED if key==name else WHITE)
-            self.tabs[key][0].configure(fg=INK if key==name else GRAY)
+            self.tabs[key][0].configure(fg=RED if key==name else GRAY, bg='#FFF1F1' if key==name else WHITE)
         self.pages[name].pack(fill='both', expand=True)
         self.current_page=name
         if name=='history':
             self.refresh_history()
 
     def title_block(self, page, title, subtitle):
-        tk.Label(page, text=title, bg=WHITE, fg=INK, font=('Segoe UI', 20, 'bold'), anchor='w').pack(fill='x', padx=24, pady=(12, 3))
+        tk.Label(page, text=title, bg=WHITE, fg=RED, font=('Segoe UI', 20, 'bold'), anchor='w').pack(fill='x', padx=24, pady=(12, 3))
         tk.Label(page, text=subtitle, bg=WHITE, fg=GRAY, anchor='w').pack(fill='x', padx=24, pady=(0, 10))
 
     def table(self, parent, columns, widths):
@@ -153,10 +157,11 @@ class App(tk.Tk):
         self.import_buttons=[]
         for col, (title, glyph, fn) in enumerate((('ZIP-архив', 'zip', self.add_zip), ('Папка', 'folder', self.add_folder), ('HTML-файлы', 'html', self.pick))):
             self.import_bar.columnconfigure(col, weight=1, uniform='import')
-            box=tk.Frame(self.import_bar, bg=WHITE, highlightbackground=BORDER, highlightthickness=1)
+            tile_color='#FFF8DF' if col==1 else '#FFF1F1'
+            box=tk.Frame(self.import_bar, bg=tile_color, highlightbackground='#EED5B0' if col==1 else '#F0C3C3', highlightthickness=1)
             box.grid(row=0, column=col, sticky='ew', padx=(0 if col==0 else 6, 0 if col==2 else 6))
-            icon(box, glyph, 30).pack(side='left', padx=(18, 6), pady=10)
-            b=ttk.Button(box, text=title, command=fn, style='Import.TButton')
+            icon(box, glyph, 30, bg=tile_color).pack(side='left', padx=(18, 6), pady=10)
+            b=ttk.Button(box, text=title, command=fn, style='ImportGold.TButton' if col==1 else 'ImportRed.TButton')
             b.pack(side='left', fill='both', expand=True)
             self.import_buttons.append(b)
         container=tk.Frame(page, bg=WHITE)

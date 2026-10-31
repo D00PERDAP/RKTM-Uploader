@@ -33,18 +33,24 @@ jobs:
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
           if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+          python tools/capture_installer.py release/RKTM-Setup-5.0.1-x86.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Installer Unicode UI verification failed' }
       - name: Sign and verify installer
         if: ${{ env.RKTM_SIGNING_PFX_B64 != '' && env.RKTM_SIGNING_PFX_PASSWORD != '' }}
         shell: pwsh
-        run: ./sign-windows.ps1 -Installer release/RKTM-Setup-5.0.0-x86.exe
+        run: ./sign-windows.ps1 -Installer release/RKTM-Setup-5.0.1-x86.exe
       - name: Test silent install and packaged startup
         shell: pwsh
         run: |
           $installDir = Join-Path $env:RUNNER_TEMP 'RKTM-install-check'
-          $install = Start-Process release/RKTM-Setup-5.0.0-x86.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$installDir" -PassThru -Wait
+          $install = Start-Process release/RKTM-Setup-5.0.1-x86.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$installDir" -PassThru -Wait
           if ($install.ExitCode -ne 0) { throw 'Silent install failed' }
           $exe = Join-Path $installDir 'Uploader\RKTM-Uploader.exe'
           if (-not (Test-Path $exe)) { throw 'Installed application missing' }
+          $shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'РКТМ — Расписание.lnk'
+          if (-not (Test-Path $shortcut)) { throw 'Russian desktop shortcut name is corrupted' }
+          $product = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{89DA7779-6E8E-44F1-9E8C-BB23FF136208}_is1'
+          if ($product.DisplayName -ne 'РКТМ — Расписание') { throw 'Russian installed product name is corrupted' }
           foreach ($mode in @('', '--admin')) {
             if ($mode) { $app = Start-Process $exe -ArgumentList $mode -PassThru } else { $app = Start-Process $exe -PassThru }
             Start-Sleep -Seconds 4
@@ -56,12 +62,12 @@ jobs:
           if ($uninstall.ExitCode -ne 0) { throw 'Uninstall failed' }
       - name: Compute checksum
         shell: pwsh
-        run: Get-FileHash release/RKTM-Setup-5.0.0-x86.exe -Algorithm SHA256 | Format-List | Out-File release/SHA256.txt
+        run: Get-FileHash release/RKTM-Setup-5.0.1-x86.exe -Algorithm SHA256 | Format-List | Out-File release/SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: RKTM-5.0.0-Setup-x86
+          name: RKTM-5.0.1-Setup-x86
           path: release/*
       - uses: actions/upload-artifact@v4
         with:
-          name: RKTM-5.0.0-real-screens
+          name: RKTM-5.0.1-real-screens
           path: previews/*.png
