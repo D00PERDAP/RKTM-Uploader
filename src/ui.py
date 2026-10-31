@@ -85,7 +85,19 @@ class Upload(Base):
  def __init__(self):
   super().__init__('РКТМ — Загрузка расписания')
   brand=ttk.Frame(self.main);brand.pack(fill='x',pady=(2,14))
-  logo=tk.Label(brand,text='РКТМ',font=('Segoe UI',16,'bold'),fg='white',bg=RED,padx=18,pady=12)
+  # Prefer the college's official logo when provided in assets; keep Win7-compatible PNG.
+  self.brand_logo=None
+  logo_path=ROOT/'assets'/'rktm-logo.png'
+  if logo_path.is_file():
+   try:
+    img=tk.PhotoImage(file=str(logo_path))
+    factor=max(1,(img.width()+159)//160,(img.height()+63)//64)
+    self.brand_logo=img.subsample(factor,factor)
+    logo=tk.Label(brand,image=self.brand_logo,bg=BG,padx=4,pady=4)
+   except tk.TclError:
+    logo=tk.Label(brand,text='РКТМ',font=('Segoe UI',16,'bold'),fg='white',bg=RED,padx=18,pady=12)
+  else:
+   logo=tk.Label(brand,text='РКТМ',font=('Segoe UI',16,'bold'),fg='white',bg=RED,padx=18,pady=12)
   logo.pack(side='left',padx=(0,16))
   header=ttk.Frame(brand);header.pack(side='left',fill='x',expand=True)
   ttk.Label(header,text='Загрузка расписания',style='Heading.TLabel').pack(anchor='w')
