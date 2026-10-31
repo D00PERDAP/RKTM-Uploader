@@ -41,3 +41,36 @@ jobs:
             release/RKTM-Setup.exe
             RKTM-Portable-${{ matrix.arch }}.zip
             SHA256-${{ matrix.arch }}.txt
+
+  legacy-win7-x86:
+    name: Windows 7 SP1 (32-bit) legacy
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+          architecture: 'x86'
+      - name: Install compatible build tooling
+        run: python -m pip install "pyinstaller==5.13.2" "pytest==7.4.4"
+      - name: Test and build 32-bit portable apps
+        shell: pwsh
+        run: ./build-windows.ps1
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Compile legacy installer
+        shell: pwsh
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DLegacyWin7 installer.iss'
+      - name: Bundle portable fallback and hashes
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/RKTM-Admin,dist/RKTM-Uploader -DestinationPath "RKTM-Portable-Win7-x86.zip"
+          Get-FileHash release/RKTM-Setup-Win7-x86.exe -Algorithm SHA256 | Out-File "SHA256-Win7-x86.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RKTM-Windows7-x86
+          path: |
+            release/RKTM-Setup-Win7-x86.exe
+            RKTM-Portable-Win7-x86.zip
+            SHA256-Win7-x86.txt
