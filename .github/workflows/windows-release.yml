@@ -6,6 +6,9 @@ on:
 jobs:
   build:
     runs-on: windows-2022
+    env:
+      RKTM_SIGNING_PFX_B64: ${{ secrets.RKTM_SIGNING_PFX_B64 }}
+      RKTM_SIGNING_PFX_PASSWORD: ${{ secrets.RKTM_SIGNING_PFX_PASSWORD }}
     strategy:
       matrix:
         arch: [x86, x64]
@@ -20,12 +23,20 @@ jobs:
       - name: Test and build
         shell: pwsh
         run: ./build-windows.ps1
+      - name: Sign application executables (only with trusted certificate)
+        if: ${{ env.RKTM_SIGNING_PFX_B64 != '' && env.RKTM_SIGNING_PFX_PASSWORD != '' }}
+        shell: pwsh
+        run: ./sign-windows.ps1
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
       - name: Create installer
         shell: pwsh
         run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+      - name: Sign and verify installer
+        if: ${{ env.RKTM_SIGNING_PFX_B64 != '' && env.RKTM_SIGNING_PFX_PASSWORD != '' }}
+        shell: pwsh
+        run: ./sign-windows.ps1 -Installer release/RKTM-Setup.exe
       - name: Create portable package
         shell: pwsh
         run: Compress-Archive -Path dist/RKTM-Admin,dist/RKTM-Uploader -DestinationPath "RKTM-Portable-${{ matrix.arch }}.zip"
@@ -45,6 +56,9 @@ jobs:
   legacy-win7-x86:
     name: Windows 7 SP1 (32-bit) legacy
     runs-on: windows-2022
+    env:
+      RKTM_SIGNING_PFX_B64: ${{ secrets.RKTM_SIGNING_PFX_B64 }}
+      RKTM_SIGNING_PFX_PASSWORD: ${{ secrets.RKTM_SIGNING_PFX_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -62,6 +76,10 @@ jobs:
       - name: Compile legacy installer
         shell: pwsh
         run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DLegacyWin7 installer.iss'
+      - name: Sign and verify legacy installer
+        if: ${{ env.RKTM_SIGNING_PFX_B64 != '' && env.RKTM_SIGNING_PFX_PASSWORD != '' }}
+        shell: pwsh
+        run: ./sign-windows.ps1 -Installer release/RKTM-Setup-Win7-x86.exe
       - name: Bundle portable fallback and hashes
         shell: pwsh
         run: |
