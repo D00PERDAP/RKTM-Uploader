@@ -1,4 +1,4 @@
-#define AppVersion "4.6.0"
+#define AppVersion "4.6.1"
 [Setup]
 AppId={{89DA7779-6E8E-44F1-9E8C-BB23FF136208}
 AppName=РКТМ — Расписание
