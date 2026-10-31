@@ -72,4 +72,4 @@ def test_publish_action_visible_on_small_display(app):
     b=app.send_button
     assert b.winfo_ismapped()
     assert b.winfo_rooty()+b.winfo_height() < app.winfo_rooty()+app.winfo_height()-25
-    assert app.items.winfo_height()>=30
+    assert app.items.winfo_height()>=118

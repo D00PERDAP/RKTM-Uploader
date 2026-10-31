@@ -26,7 +26,7 @@ class App(tk.Tk):
         super().__init__()
         self.title('РКТМ — Расписание')
         self.geometry('{}x{}'.format(min(1080, self.winfo_screenwidth()-40), min(760, self.winfo_screenheight()-100)))
-        self.minsize(900, 620)
+        self.minsize(900, 640)
         self.configure(bg=BG)
         self.busy=False
         self.entries=[]
@@ -48,7 +48,7 @@ class App(tk.Tk):
         tk.Label(footer, textvariable=self.status, bg=WHITE, fg=GRAY, font=('Segoe UI', 9), anchor='w').pack(side='left', padx=16, pady=8)
         tk.Label(footer, text='Сорокин Дмитрий Денисович', bg=WHITE, fg=GRAY, font=('Segoe UI', 9)).pack(side='right', padx=16)
         self.body=tk.Frame(self, bg=BG)
-        self.body.pack(fill='both', expand=True, padx=28, pady=22)
+        self.body.pack(fill='both', expand=True, padx=28, pady=14)
         self.pages={}
         for name in ('schedule', 'history', 'settings'):
             self.pages[name]=tk.Frame(self.body, bg=WHITE, highlightbackground=BORDER, highlightthickness=1)
@@ -77,10 +77,10 @@ class App(tk.Tk):
         s.map('TButton', background=[('active', '#F0F1F3')])
         s.configure('Primary.TButton', background=RED, foreground=WHITE, bordercolor=RED, font=('Segoe UI', 11, 'bold'))
         s.map('Primary.TButton', background=[('disabled', '#BBBBBB'), ('active', '#C7191C')], foreground=[('disabled', WHITE)])
-        s.configure('Import.TButton', padding=(10, 19), font=('Segoe UI', 11, 'bold'), borderwidth=0, relief='flat')
+        s.configure('Import.TButton', padding=(10, 12), font=('Segoe UI', 11, 'bold'), borderwidth=0, relief='flat')
         s.configure('TEntry', padding=7, fieldbackground=WHITE, bordercolor=BORDER)
-        s.configure('Treeview', background=WHITE, fieldbackground=WHITE, foreground=INK, rowheight=32, bordercolor=BORDER, font=('Segoe UI', 10))
-        s.configure('Treeview.Heading', background='#F1F2F4', foreground=GRAY, font=('Segoe UI', 10), padding=(8, 9), relief='flat', borderwidth=1, lightcolor=BORDER, darkcolor=BORDER)
+        s.configure('Treeview', background=WHITE, fieldbackground=WHITE, foreground=INK, rowheight=28, bordercolor=BORDER, font=('Segoe UI', 10))
+        s.configure('Treeview.Heading', background='#F1F2F4', foreground=GRAY, font=('Segoe UI', 10), padding=(8, 6), relief='flat', borderwidth=1, lightcolor=BORDER, darkcolor=BORDER)
         s.map('Treeview', background=[('selected', '#FCE5E5')], foreground=[('selected', INK)])
         s.configure('Horizontal.TProgressbar', background=RED, troughcolor='#ECEDEF', borderwidth=0, thickness=8)
 
@@ -118,8 +118,8 @@ class App(tk.Tk):
             self.refresh_history()
 
     def title_block(self, page, title, subtitle):
-        tk.Label(page, text=title, bg=WHITE, fg=INK, font=('Segoe UI', 22, 'bold'), anchor='w').pack(fill='x', padx=24, pady=(20, 3))
-        tk.Label(page, text=subtitle, bg=WHITE, fg=GRAY, anchor='w').pack(fill='x', padx=24, pady=(0, 16))
+        tk.Label(page, text=title, bg=WHITE, fg=INK, font=('Segoe UI', 20, 'bold'), anchor='w').pack(fill='x', padx=24, pady=(16, 3))
+        tk.Label(page, text=subtitle, bg=WHITE, fg=GRAY, anchor='w').pack(fill='x', padx=24, pady=(0, 10))
 
     def table(self, parent, columns, widths):
         frame=ttk.Frame(parent)
@@ -138,7 +138,7 @@ class App(tk.Tk):
         page=self.pages['schedule']
         self.title_block(page, 'Публикация расписания', 'Выберите файлы, проверьте и отправьте на сайт')
         steps=tk.Frame(page, bg=WHITE)
-        steps.pack(fill='x', padx=24, pady=(0, 16))
+        steps.pack(fill='x', padx=24, pady=(0, 10))
         self.step_widgets=[]
         for i, title in enumerate(('Выбор файлов', 'Проверка', 'Публикация'), 1):
             circle=tk.Label(steps, text=str(i), bg='#E5E4E4', fg=INK, font=('Segoe UI', 12, 'bold'), width=3, pady=5)
@@ -155,7 +155,7 @@ class App(tk.Tk):
             self.import_bar.columnconfigure(col, weight=1, uniform='import')
             box=tk.Frame(self.import_bar, bg=WHITE, highlightbackground=BORDER, highlightthickness=1)
             box.grid(row=0, column=col, sticky='ew', padx=(0 if col==0 else 6, 0 if col==2 else 6))
-            icon(box, glyph, 30).pack(side='left', padx=(18, 6), pady=15)
+            icon(box, glyph, 30).pack(side='left', padx=(18, 6), pady=10)
             b=ttk.Button(box, text=title, command=fn, style='Import.TButton')
             b.pack(side='left', fill='both', expand=True)
             self.import_buttons.append(b)
@@ -168,7 +168,8 @@ class App(tk.Tk):
         self.progress=ttk.Progressbar(page, maximum=1)
         self.progress.pack(fill='x', padx=24, pady=(3, 5))
         self.current=tk.StringVar(value='Добавьте файлы расписания')
-        tk.Label(page, textvariable=self.current, bg=WHITE, fg=GRAY, anchor='w').pack(fill='x', padx=24, pady=(0, 5))
+        self.current_label=tk.Label(page, textvariable=self.current, bg=WHITE, fg=GRAY, anchor='w')
+        self.current_label.pack(fill='x', padx=24, pady=(0, 5))
         bottom=tk.Frame(page, bg=WHITE)
         bottom.pack(fill='x', padx=24, pady=(5, 18))
         self.remove_button=ttk.Button(bottom, text='Убрать выбранное', command=self.remove_selected)
@@ -184,7 +185,7 @@ class App(tk.Tk):
         widgets=page.pack_slaves()
         options={w:w.pack_info() for w in widgets}
         for w in widgets:w.pack_forget()
-        for w in (self.destination_label, bottom, widgets[-3], self.progress, widgets[-5]):
+        for w in (self.destination_label, bottom, self.current_label, self.progress, widgets[-5]):
             opts=dict(options[w]);opts.pop('in', None);opts['side']='bottom'
             w.pack(**opts)
         for w in widgets[:4]:
@@ -209,6 +210,10 @@ class App(tk.Tk):
         if self.busy:
             return
         self.stage_num=number
+        if number==3:
+            self.progress.pack(side='bottom', fill='x', padx=24, pady=(3, 5), after=self.current_label)
+        else:
+            self.progress.pack_forget()
         for i, (circle, label) in enumerate(self.step_widgets, 1):
             circle.configure(bg=YELLOW if i==number else '#E5E4E4')
             label.configure(fg=INK if i==number else GRAY, font=('Segoe UI', 10, 'bold' if i==number else 'normal'))
@@ -326,7 +331,7 @@ class App(tk.Tk):
         page=self.pages['history']
         self.title_block(page, 'История публикаций', 'Результаты загрузок с этого компьютера')
         table=tk.Frame(page, bg=WHITE)
-        table.pack(fill='both', expand=True, padx=24, pady=(0, 16))
+        table.pack(fill='both', expand=True, padx=24, pady=(0, 10))
         self.history_items=self.table(table, ('Дата', 'Файлов', 'Результат'), (250, 110, 420))
         self.history_items.tag_configure('ok', foreground='#207743')
         bottom=ttk.Frame(page)
