@@ -1,16 +1,21 @@
-#define AppVersion "4.5.0"
+#define AppVersion "4.6.0"
 [Setup]
 AppId={{89DA7779-6E8E-44F1-9E8C-BB23FF136208}
 AppName=РКТМ — Расписание
 AppPublisher=Сорокин Дмитрий Денисович
 VersionInfoCompany=Сорокин Дмитрий Денисович
 VersionInfoDescription=РКТМ — загрузчик расписаний
-VersionInfoVersion=4.5.0
+VersionInfoVersion=4.6.0
 AppVersion={#AppVersion}
 DefaultDirName={autopf}\RKTM Schedule
 DefaultGroupName=РКТМ — Расписание
 OutputDir=release
+#ifdef LegacyWin7
+OutputBaseFilename=RKTM-Setup-Win7-x86
+MinVersion=6.1sp1
+#else
 OutputBaseFilename=RKTM-Setup
+#endif
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
