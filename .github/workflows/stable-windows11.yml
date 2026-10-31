@@ -1,0 +1,43 @@
+name: RKTM stable Windows 11 (restore 4.5)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  stable:
+    runs-on: windows-2022
+    steps:
+      - name: Check out verified pre-Windows-7 implementation
+        uses: actions/checkout@v4
+        with:
+          ref: deb26f2c4c3b3fc248501527d1b66da7c6797ad6
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: 'x64'
+      - name: Build with original tested toolchain
+        run: python -m pip install "pyinstaller==6.11.1" "pytest==8.3.4"
+      - name: Test and build original stable program
+        shell: pwsh
+        run: ./build-windows.ps1
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Create original Windows 11 installer
+        shell: pwsh
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+      - name: Archive stable portable apps
+        shell: pwsh
+        run: Compress-Archive -Path dist/RKTM-Admin,dist/RKTM-Uploader -DestinationPath RKTM-Stable-Portable-Win11.zip
+      - name: SHA256 manifest
+        shell: pwsh
+        run: |
+          Get-FileHash release/RKTM-Setup.exe, RKTM-Stable-Portable-Win11.zip -Algorithm SHA256 | Format-Table -AutoSize | Out-File SHA256-Stable.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RKTM-Stable-Windows11-v4.5
+          path: |
+            release/RKTM-Setup.exe
+            RKTM-Stable-Portable-Win11.zip
+            SHA256-Stable.txt
