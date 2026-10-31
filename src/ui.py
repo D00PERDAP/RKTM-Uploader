@@ -48,7 +48,7 @@ class App(tk.Tk):
         tk.Label(footer, textvariable=self.status, bg=WHITE, fg=GRAY, font=('Segoe UI', 9), anchor='w').pack(side='left', padx=16, pady=8)
         tk.Label(footer, text='Сорокин Дмитрий Денисович', bg=WHITE, fg=GRAY, font=('Segoe UI', 9)).pack(side='right', padx=16)
         self.body=tk.Frame(self, bg=BG)
-        self.body.pack(fill='both', expand=True, padx=28, pady=14)
+        self.body.pack(fill='both', expand=True, padx=28, pady=10)
         self.pages={}
         for name in ('schedule', 'history', 'settings'):
             self.pages[name]=tk.Frame(self.body, bg=WHITE, highlightbackground=BORDER, highlightthickness=1)
@@ -65,7 +65,7 @@ class App(tk.Tk):
         self.update_destination()
         self.show_stage(1)
         self.show_page(initial_tab)
-        self.after(100, self.poll)
+        self.poll_id=self.after(100, self.poll)
 
     def _styles(self):
         self.option_add('*Font', ('Segoe UI', 10))
@@ -118,7 +118,7 @@ class App(tk.Tk):
             self.refresh_history()
 
     def title_block(self, page, title, subtitle):
-        tk.Label(page, text=title, bg=WHITE, fg=INK, font=('Segoe UI', 20, 'bold'), anchor='w').pack(fill='x', padx=24, pady=(16, 3))
+        tk.Label(page, text=title, bg=WHITE, fg=INK, font=('Segoe UI', 20, 'bold'), anchor='w').pack(fill='x', padx=24, pady=(12, 3))
         tk.Label(page, text=subtitle, bg=WHITE, fg=GRAY, anchor='w').pack(fill='x', padx=24, pady=(0, 10))
 
     def table(self, parent, columns, widths):
@@ -485,12 +485,13 @@ class App(tk.Tk):
                     self.status.set('Операция выполнена')
                     done(result)
         except queue.Empty:pass
-        self.after(100, self.poll)
+        self.poll_id=self.after(100, self.poll)
 
     def close(self):
         if self.busy:
             messagebox.showinfo('Выполняется операция', 'Дождитесь завершения перед закрытием программы.')
             return
+        self.after_cancel(self.poll_id)
         for temp in self.temps:temp.cleanup()
         self.destroy()
 
